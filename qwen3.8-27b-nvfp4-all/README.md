@@ -46,7 +46,7 @@ Quality, greedy with thinking on, on the same host (GSM8K: the first 200 test pr
 | `stock` with the Marlin kernels forced | 190/200 | 18/18 |
 | `draft-head` with the Marlin kernels forced | 190/200 | 18/18 |
 
-The official FP8 release scored 186/200 and 18/18 in the same evaluation on another host. The model card has the full GSM8K and the agentic tasks.
+The official FP8 release scored 186/200 and 18/18 in the same evaluation on another host. On all 1,319 GSM8K test problems, `stock` scored 1,240 against the FP8 release's 1,231 (24 problems lost, 33 gained). The model card has the agentic tasks.
 
 ## Benchmark
 
