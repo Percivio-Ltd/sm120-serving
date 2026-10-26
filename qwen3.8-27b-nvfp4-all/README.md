@@ -6,6 +6,7 @@
 ./serve.sh baseline      # Qwen/Qwen3.8-27B-FP8, MTP with 5 draft tokens: the reference
 ./serve.sh stock         # this checkpoint on unmodified vLLM: default kernels, FP8 KV cache, MTP5
 FP8_DIR=/data/qwen3.8-27b-fp8 ./serve.sh draft-head   # the same plus ../pruned-draft-head
+AGENT=1 ./serve.sh stock # for agents: tool calling with ../strict-tool-grammar, prefix caching
 ```
 
 `draft-head` copies the draft head's rows from the dense `lm_head` in the FP8 release's `outside.safetensors` (6.0 GB), because this checkpoint's own head is NVFP4:
@@ -46,7 +47,18 @@ Quality, greedy with thinking on, on the same host (GSM8K: the first 200 test pr
 | `stock` with the Marlin kernels forced | 190/200 | 18/18 |
 | `draft-head` with the Marlin kernels forced | 190/200 | 18/18 |
 
-The official FP8 release scored 186/200 and 18/18 in the same evaluation on another host. On all 1,319 GSM8K test problems, `stock` scored 1,240 against the FP8 release's 1,231 (24 problems lost, 33 gained). The model card has the agentic tasks.
+The official FP8 release scored 186/200 and 18/18 in the same evaluation on another host. On all 1,319 GSM8K test problems, `stock` scored 1,240 against the FP8 release's 1,231 (24 problems lost, 33 gained).
+
+Six long-context agentic tasks (two question-answering, two bug-repair and two proof-of-concept tasks over 128K–200K-token code contexts, graded by fixture tests and fact and citation checks; a small internal battery), three runs each, with tool calling and prefix caching, one request at a time:
+
+| Agentic tasks passed | `baseline` | `draft-head` with the Marlin kernels forced |
+|---|---:|---:|
+| strict tools, vLLM's unfixed grammar | 16/18 | 18/18 |
+| strict tools with [`../strict-tool-grammar`](../strict-tool-grammar) | 14/18 | 12/18 |
+| strict tools off | 18/18 | 16/18 |
+| all nine runs | 48/54 | 46/54 |
+
+None of these ran on the benchmark host; the second and third rows ran after the first, on another RTX PRO 6000 host, each run on a fresh server start. Repeat runs of one configuration have moved by up to two tasks, so these differences are within run-to-run variation. No run produced a reasoning loop. `stock` was not run on these tasks.
 
 ## Benchmark
 

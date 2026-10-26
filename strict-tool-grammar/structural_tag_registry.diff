@@ -1,0 +1,106 @@
+--- a/vllm/tool_parsers/structural_tag_registry.py
++++ b/vllm/tool_parsers/structural_tag_registry.py
+@@ -1,5 +1,11 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++# SPDX-FileCopyrightText: Copyright 2026 Percivio Ltd (modifications)
++#
++# Modified by Percivio Ltd in October 2026: lets strict Qwen XML tool calls of tools without required
++# arguments close as the chat template renders them (allow_qwen_xml_empty_call). Based on
++# vllm/tool_parsers/structural_tag_registry.py at vLLM commit
++# c50aca14416ef29f6ed0ed256302f30646726dcd; structural_tag_registry.diff holds the full change.
+ 
+ 
+ import json
+@@ -242,12 +248,90 @@ def get_model_structural_tag(
+             f"tokens and cannot apply token_suffix={token_suffix!r}"
+         )
+ 
+-    return get_xgrammar_model_structural_tag(
++    tag = get_xgrammar_model_structural_tag(
+         model=model,
+         tools=dumped_tools,
+         tool_choice=dumped_tool_choice,
+         reasoning=reasoning,
+     )
++    if model in _QWEN_XML_EMPTY_CALL_MODELS:
++        allow_qwen_xml_empty_call(tag)
++    return tag
++
++
++# Qwen XML tool calls: the chat template renders a call without arguments as
++# "<function=NAME>\n</function>", but the xgrammar tag is begin
++# "<tool_call>\n<function=NAME>\n", content, end "\n</function>\n</tool_call>",
++# so an empty body needs a second newline and the template's own close is
++# illegal; strict decoding is then forced through whitespace until a newline
++# wins. For tools that accept an empty argument object, also allow the
++# template's close. Calls with parameters keep exactly the original language.
++_QWEN_XML_EMPTY_CALL_MODELS = frozenset({"qwen_3_coder", "qwen_3_5"})
++_QWEN_XML_CALL_BEGIN = "<tool_call>\n<function="
++_QWEN_XML_CALL_END = "\n</function>\n</tool_call>"
++_QWEN_XML_EMPTY_CALL_END = "</function>\n</tool_call>"
++_EMPTY_OBJECT_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
++_SCHEMA_COMBINATORS = ("anyOf", "oneOf", "allOf", "not", "if", "$ref", "dependentRequired")
++
++
++def _empty_call_kind(schema: Any) -> Literal["only", "optional"] | None:
++    """Whether an argument schema accepts no arguments: only those, or also some."""
++    if schema is True:
++        return "optional"
++    if not isinstance(schema, dict) or any(k in schema for k in _SCHEMA_COMBINATORS):
++        return None
++    if schema.get("type", "object") != "object":
++        return None
++    if schema.get("required") or (schema.get("minProperties") or 0) > 0:
++        return None
++    if (
++        not schema.get("properties")
++        and not schema.get("patternProperties")
++        and schema.get("additionalProperties") is False
++    ):
++        return "only"
++    return "optional"
++
++
++def allow_qwen_xml_empty_call(tag: StructuralTag) -> StructuralTag:
++    """Let Qwen XML calls of tools without required arguments close as rendered, in place."""
++
++    def visit(node: Any) -> None:
++        if isinstance(node, TagFormat):
++            content = node.content
++            if (
++                isinstance(node.begin, str)
++                and node.begin.startswith(_QWEN_XML_CALL_BEGIN)
++                and node.end == _QWEN_XML_CALL_END
++                and isinstance(content, JSONSchemaFormat)
++                and content.style == "qwen_xml"
++            ):
++                kind = _empty_call_kind(content.json_schema)
++                if kind == "optional":
++                    # Arguments then the newline the original end began with,
++                    # or no arguments (whitespace only).
++                    node.content = OrFormat(
++                        elements=[
++                            SequenceFormat(
++                                elements=[content, ConstStringFormat(value="\n")]
++                            ),
++                            content.model_copy(
++                                update={"json_schema": _EMPTY_OBJECT_SCHEMA}
++                            ),
++                        ]
++                    )
++                if kind is not None:
++                    node.end = _QWEN_XML_EMPTY_CALL_END
++                return
++        if isinstance(node, BaseModel):
++            for name in type(node).model_fields:
++                visit(getattr(node, name))
++        elif isinstance(node, (list, tuple)):
++            for item in node:
++                visit(item)
++
++    visit(tag.format)
++    return tag
+ 
+ 
+ _TOOL_CALL_LIST_FORMATS = (
