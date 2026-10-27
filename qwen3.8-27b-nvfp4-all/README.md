@@ -16,6 +16,10 @@ hf download Qwen/Qwen3.8-27B-FP8 outside.safetensors --revision 017b9c7af6b5689d
   --local-dir /data/qwen3.8-27b-fp8
 ```
 
+`AGENT=1` also sets `--prefix-match-unit 64`. With MTP, vLLM keeps the Gated DeltaNet state for prefix reuse at least one match unit before the end of the cached prompt, so each agent turn recomputes the new tokens plus one to two units. The default unit is the 1,664-token page. On the six agentic tasks below (the Marlin kernels and the draft head, three runs each, one host), the 64-token unit cut the median tokens recomputed per turn from about 3,000 to about 300 and the mean time per six-task run from 934.7 to 834.6 s (−10.7%), with 14/18 tasks passed in both arms.
+
+For a 32 GB card (RTX PRO 4500 or RTX 5090 class), [`32gb/`](32gb/) has a serving script and the measurements on an RTX PRO 4500.
+
 ## Results
 
 One RTX PRO 6000 Blackwell Server Edition (AWS g7e.2xlarge), the image pinned in `serve.sh`, means of three benches on fresh server starts (four for the FP8 release), all on one host:

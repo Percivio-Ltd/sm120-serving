@@ -7,7 +7,8 @@
 #   draft-head  the same plus the pruned FP8 draft head (../pruned-draft-head). Set FP8_DIR to a directory holding
 #               outside.safetensors from Qwen/Qwen3.8-27B-FP8, which supplies the draft head's dense lm_head rows.
 # AGENT=1 serves agents instead of the benchmark: tool calling (qwen3_coder parser) with the strict-tool grammar fix
-# (../strict-tool-grammar) mounted, and prefix caching, as in the agentic-task runs.
+# (../strict-tool-grammar) mounted, and prefix caching with a 64-token match unit, so that each turn reuses all but
+# the last few dozen tokens of the previous one (README.md).
 set -euo pipefail
 MODE=${1:-stock}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,7 +31,8 @@ case $MODE in
 esac
 if [ "${AGENT:-0}" = 1 ]; then
   DOCKER+=(-v "$HERE/strict-tool-grammar/structural_tag_registry.py:$TR:ro")
-  WORKLOAD=(--enable-prefix-caching --mamba-cache-mode align --enable-auto-tool-choice --tool-call-parser qwen3_coder)
+  WORKLOAD=(--enable-prefix-caching --mamba-cache-mode align --prefix-match-unit 64
+    --enable-auto-tool-choice --tool-call-parser qwen3_coder)
 fi
 exec docker run --rm --name sm120-serving --gpus all --ipc host --network host --ulimit memlock=-1 \
   --ulimit stack=67108864 -v "${HF_HOME:-$HOME/.cache/huggingface}:/root/.cache/huggingface" \

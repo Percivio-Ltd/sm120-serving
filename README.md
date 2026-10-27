@@ -4,7 +4,7 @@ Recipes, vLLM patches and the benchmark from Percivio's work on fast single-stre
 
 | Directory | Contents |
 |---|---|
-| [`qwen3.8-27b-nvfp4-all/`](qwen3.8-27b-nvfp4-all/) | Serving script and measurements for [Percivio/Qwen3.8-27B-NVFP4-all](https://huggingface.co/Percivio/Qwen3.8-27B-NVFP4-all) |
+| [`qwen3.8-27b-nvfp4-all/`](qwen3.8-27b-nvfp4-all/) | Serving script and measurements for [Percivio/Qwen3.8-27B-NVFP4-all](https://huggingface.co/Percivio/Qwen3.8-27B-NVFP4-all), and a [kit for 32 GB cards](qwen3.8-27b-nvfp4-all/32gb/) |
 | [`pruned-draft-head/`](pruned-draft-head/) | vLLM patch: MTP drafting against a pruned FP8 copy of the output head |
 | [`strict-tool-grammar/`](strict-tool-grammar/) | vLLM patch: strict Qwen tool calls without arguments close instead of running on in hidden whitespace |
 | [`bench/`](bench/) | Single-stream long-context decode benchmark for any OpenAI-compatible server (Python standard library only) |
