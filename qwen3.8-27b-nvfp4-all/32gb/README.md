@@ -37,6 +37,7 @@ Settings are environment variables:
 | `MAX_SEQS` | `1` | concurrent requests; the speed numbers below are single stream |
 | `PORT` | `8000` | port on 127.0.0.1 |
 | `HF_CACHE` | `~/.cache/huggingface` | where the model is downloaded |
+| `MARLIN` | `0` | `1` forces vLLM's Marlin kernels, the setting the results below were measured with |
 
 **If the card also drives your display:** the 256K setting leaves only about 1.3 GiB free on a headless card, and a desktop takes some of that. Start with `MAX_LEN=131072 KV_BYTES=0 bash serve.sh`. If the server reports too little KV cache memory for `MAX_LEN`, lower `MAX_LEN`. We did not test a display-attached card.
 
@@ -53,7 +54,7 @@ bash run_all.sh    # about 1.5 hours; results in ./results
 
 ## Results on an RTX PRO 4500 Blackwell (32 GB, 165 W)
 
-Measured on 26 October 2026 on an AWS g7.4xlarge with one RTX PRO 4500 Blackwell Server Edition (32 GB, driver 595.91.07, headless). `run_all.sh` ran unchanged with the defaults: `MAX_LEN=262144`, `KV_BYTES` 10 GiB, a single stream. The model was a local copy whose 21 files match the release's SHA-256 manifest.
+Measured on 26 October 2026 on an AWS g7.4xlarge with one RTX PRO 4500 Blackwell Server Edition (32 GB, driver 595.91.07, headless). `run_all.sh` ran with `MAX_LEN=262144`, `KV_BYTES` 10 GiB, a single stream and the Marlin kernels (`MARLIN=1` today). The model was a local copy whose 21 files match the release's SHA-256 manifest.
 
 **Speed** (`bench.py`). Each row covers three requests, all greedy with thinking on and 2,048 output tokens. Prefix caching was off.
 
@@ -73,9 +74,9 @@ None of the nine requests fell into a repetition loop.
 
 The time to first token is the cost of a cold prompt. With prefix caching on (the default), later turns of a conversation reuse the cached prefix and start much sooner.
 
-Since this measurement, `serve.sh` mounts the strict-tool grammar fix and adds `--prefix-match-unit 64` to prefix caching. The speed run used neither prefix caching nor tools, and the quality run used no tools. On an RTX PRO 6000, with the Marlin kernels, FP8 KV cache and MTP as here, `--prefix-match-unit 64` cut the time of six long-context agentic tasks by 10.7% at equal scores ([details](../README.md)); it is not measured on 32 GB cards.
+Since this measurement, `serve.sh` has changed in three ways. It mounts the strict-tool grammar fix, which neither run exercised because they sent no tools. It adds `--prefix-match-unit 64` to prefix caching, which the speed run had off. And it uses vLLM's default NVFP4 kernels instead of forcing Marlin (below). On an RTX PRO 6000, with the Marlin kernels, FP8 KV cache and MTP as here, `--prefix-match-unit 64` cut the time of six long-context agentic tasks by 10.7% at equal scores ([details](../README.md)); it is not measured on 32 GB cards.
 
-**Kernels.** `serve.sh` forces vLLM's Marlin kernels for the NVFP4 and FP8 layers, as measured here. On the RTX PRO 6000, vLLM's default NVFP4 kernels make prefill 1.4–1.9× faster at 3–4% fewer decode steps per second, and the [main recipe](../) uses them. To try them, delete the `--kernel-config` line in `serve.sh`; on a 32 GB card their speed, and whether 256K still fits, are not measured.
+**Kernels.** `serve.sh` now leaves vLLM's default NVFP4 kernels in place, as the [main recipe](../) does. On the RTX PRO 6000 they make prefill 1.4–1.9× faster than the Marlin kernels, at 3–4% fewer decode steps per second. They take the same memory there (16.5 GiB of weights and the same room for the KV cache), so the 256K setting should still fit. We expect a much shorter time to first token than in the table above and about the same decode speed, but we have not yet measured them on a 32 GB card. `MARLIN=1 bash run_all.sh` repeats the measured configuration.
 
 ## How the model was made
 

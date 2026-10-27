@@ -11,6 +11,8 @@
 #   PORT          port on 127.0.0.1                                    (default 8000)
 #   HF_CACHE      Hugging Face cache on the host                      (default ~/.cache/huggingface)
 #   NAME          container name                                       (default q27)
+#   MARLIN        1 forces vLLM's Marlin kernels, as in README.md's measurement; 0 keeps vLLM's default NVFP4 kernels,
+#                 which prefill faster                                (default 0)
 # Tool calls use the qwen3_xml parser with the strict-tool grammar fix (../../strict-tool-grammar) mounted.
 # Stop with: docker rm -f q27
 set -euo pipefail
@@ -22,6 +24,7 @@ MAX_SEQS=${MAX_SEQS:-1}
 PORT=${PORT:-8000}
 HF_CACHE=${HF_CACHE:-$HOME/.cache/huggingface}
 NAME=${NAME:-q27}
+MARLIN=${MARLIN:-0}
 # The vLLM nightly every number in README.md was measured with (0.32.1rc1.dev435+gc50aca144, CUDA 13).
 IMAGE=vllm/vllm-openai@sha256:3379c8e773c619972cc81e9f1db648c38ab5029369d71c7a24149753666c6480
 FIX=$(cd "$(dirname "$0")/../../strict-tool-grammar" && pwd)/structural_tag_registry.py
@@ -37,12 +40,14 @@ fi
 
 args=(--served-model-name q27 --host 127.0.0.1 --port "$PORT"
   --max-model-len "$MAX_LEN" --gpu-memory-utilization 0.90 --max-num-seqs "$MAX_SEQS" --max-num-batched-tokens 2048
-  --kernel-config '{"linear_backend_per_quant":{"nvfp4_w4a4":"marlin","fp8_w8a8":"marlin"}}'
   --kv-cache-dtype fp8 --mamba-ssm-cache-dtype float32 --attention-config '{"backend":"FLASHINFER"}'
   --speculative-config '{"method":"mtp","num_speculative_tokens":5}'
   --reasoning-parser qwen3 --default-chat-template-kwargs '{"enable_thinking":true}'
   --enable-auto-tool-choice --tool-call-parser qwen3_xml
   --generation-config vllm --limit-mm-per-prompt '{"image":0,"video":0}')
+if [ "$MARLIN" = 1 ]; then
+  args+=(--kernel-config '{"linear_backend_per_quant":{"nvfp4_w4a4":"marlin","fp8_w8a8":"marlin"}}')
+fi
 if [ "$KV_BYTES" != 0 ]; then args+=(--kv-cache-memory-bytes "$KV_BYTES"); fi
 if [ "$PREFIX_CACHE" = 1 ]; then
   args+=(--enable-prefix-caching --mamba-cache-mode align --prefix-match-unit 64)
