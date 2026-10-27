@@ -75,7 +75,7 @@ The time to first token is the cost of a cold prompt. With prefix caching on (th
 
 Since this measurement, `serve.sh` mounts the strict-tool grammar fix and adds `--prefix-match-unit 64` to prefix caching. The speed run used neither prefix caching nor tools, and the quality run used no tools. On an RTX PRO 6000, with the Marlin kernels, FP8 KV cache and MTP as here, `--prefix-match-unit 64` cut the time of six long-context agentic tasks by 10.7% at equal scores ([details](../README.md)); it is not measured on 32 GB cards.
 
-**Kernels.** `serve.sh` forces vLLM's Marlin kernels for the NVFP4 and FP8 layers, as measured here. On the RTX PRO 6000, vLLM's default NVFP4 kernels make prefill 1.4–1.9× faster at 3–4% slower decode, and the [main recipe](../) uses them. To try them, delete the `--kernel-config` line in `serve.sh`; on a 32 GB card their speed, and whether 256K still fits, are not measured.
+**Kernels.** `serve.sh` forces vLLM's Marlin kernels for the NVFP4 and FP8 layers, as measured here. On the RTX PRO 6000, vLLM's default NVFP4 kernels make prefill 1.4–1.9× faster at 3–4% fewer decode steps per second, and the [main recipe](../) uses them. To try them, delete the `--kernel-config` line in `serve.sh`; on a 32 GB card their speed, and whether 256K still fits, are not measured.
 
 ## How the model was made
 
