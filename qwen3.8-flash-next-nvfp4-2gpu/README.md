@@ -64,7 +64,7 @@ The six agentic tasks ([below](#benchmark-and-agentic-tasks)), on the same host 
 | `baseline` | 627.4 s, 4/6 (one task looped and was cut off at 65,536 tokens) | 468.0 s, 5/6 |
 | `tuned` | **292.8 s, 4/6** | **355.8 s, 5/6** |
 
-Each run takes its own path through the tasks. In round 2 the tuned stack wrote more tokens than the reference (77,852 against 66,826), so its time there is 1.32× faster where its decoding is 1.8× faster. No run of the tuned stack looped.
+Each run takes its own path through the tasks. In round 2 the tuned stack wrote more tokens than the reference (77,852 against 66,826), so its time there is 1.32× faster where its decoding is 1.8× faster. No run of the tuned stack looped. Pass counts are under our first grading of the question-answering tasks (adj1, a regrade that clears known grader errors); a later revision of those checks (w01-qa/v2) grades the code tasks the same. Under w01-qa/v2, which this comparison's own report uses, the same runs score 4/6 and 5/6 (no speculation), 4/6 and 5/6 (`baseline`) and 5/6 and 6/6 (`tuned`). The figures for this stack on [artus.ai/frankenstein](https://artus.ai/frankenstein/) come from three earlier runs on another host on 26 October: 331.3, 287.9 and 279.3 s, with 4/6, 6/6 and 5/6 under adj1.
 
 ### Earlier measurement of the stack
 

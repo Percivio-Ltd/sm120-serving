@@ -54,6 +54,8 @@ katt2b's time to first token is 1.11 / 1.14 / 1.19× shorter than the control's,
 
 All four code tasks passed in every run; the failures are the two question-answering tasks. The configuration without katt2b scored 4/6 in 896 s on the g7e.4xlarge. On the g7e.2xlarge, katt2b on vLLM's default NVFP4 kernels (`MARLIN=0`) took 813.1 s on average over two runs against 856.4 s for this stack, passing 4/6 in both. That variant was never adopted, and these two runs are its only record here, so `serve.sh` keeps the adopted Marlin configuration as its default.
 
+Pass counts are under our first grading of the question-answering tasks (adj1, a regrade that clears known grader errors); a later revision of those checks (w01-qa/v2) grades the code tasks the same. Under w01-qa/v2 the four runs above score the same (4/6, 4/6, 4/6 and 5/6), and the two `MARLIN=0` runs score 6/6 each. [artus.ai/frankenstein](https://artus.ai/frankenstein/) shows no pass counts for this stack.
+
 The benches ran [`../bench/bench.py`](../bench/bench.py) (76.7K, 126.1K and 223.7K-token Django 5.1 prompts, 2,048 output tokens); see [`../qwen3.8-27b-nvfp4-all/`](../qwen3.8-27b-nvfp4-all/#benchmark) for the method and for the official FP8 release's numbers, which were measured on a different host and date.
 
 ## Limits
