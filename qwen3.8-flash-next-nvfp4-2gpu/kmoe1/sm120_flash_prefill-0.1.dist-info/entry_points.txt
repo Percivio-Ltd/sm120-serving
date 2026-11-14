@@ -1,0 +1,2 @@
+[vllm.general_plugins]
+sm120_flash_prefill = sm120_flash_prefill:register

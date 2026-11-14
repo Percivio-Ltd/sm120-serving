@@ -1,0 +1,2 @@
+[vllm.general_plugins]
+sm120_flash_decode = sm120_flash_decode:register

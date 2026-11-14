@@ -1,0 +1,4 @@
+Metadata-Version: 2.1
+Name: sm120-flash-decode
+Version: 0.1
+Summary: K-FDEC Flash decode MoE patch (vLLM general plugin)

@@ -1,0 +1,136 @@
+--- a/recipe/serve/serve.sh
++++ b/recipe/serve/serve.sh
+@@ -2,8 +2,8 @@
+ # Serve DeepSeek-V4.1-Flash-1017 (calibrated EXL3 3-bit routed experts, int4 Engram, EXL3 3-bit DSpark drafter experts) with
+ # vLLM TP2 on 2x RTX PRO 6000 Blackwell (sm_120, 96 GB each). The defaults below are the configuration behind the model card
+ # numbers, except CPU_EXPERTS (see below).
+-# Memory layout: the most-used routed experts live in VRAM; the coldest 5,296 target experts (plans/plan-1017-agent30-c512.json,
+-# tuned for long agentic coding sessions; see plans/README.md) stay in pinned host RAM, and a 512-slot VRAM cache per GPU holds
++# Memory layout: the most-used routed experts live in VRAM; the coldest 5,296 target experts (plans/plan-rt-5296.json,
++# fitted to the expert routing of our own agent tasks; see plans/README.md) stay in pinned host RAM, and a 512-slot VRAM cache per GPU holds
+ # copies of the host experts that recent decode steps used most. Host experts run next to the VRAM experts: on a side stream
+ # that reads them over PCIe (default), or on a CPU core pool (CPU_EXPERTS=1). Prefill runs the VRAM experts through the
+ # decode-once kernel with int8 tensor-core math (kernels/xmoe_do_i8, EXL3_DO=1 DO_INT8=1). The Engram tables (int4) and the
+@@ -17,7 +17,7 @@
+ # Chat prompts are rendered and tokenized like the official DeepSeek API and tool calls are parsed from emitted DSML tokens only
+ # (patches/vllm/v41-encoder-api.diff, v41-parser-strict-dsml.diff, v41-namespaces-thinking.diff; the VLLM_DS41_* switches below,
+ # all on).
+-# Text and image input (VISION=1). Foreground; Ctrl-C removes the container. Requires API_KEY in the environment (clients send it as the Bearer token).
++# Text and image input (VISION=1). Foreground; Ctrl-C removes the container. Requires the engine key in API_KEY_FILE (below; clients send it as the Bearer token).
+ # PROFILE=2x (default): the 2-GPU configuration above. PROFILE=8x REPLICA=0|1: one of the two replicas of an 8x RTX PRO 6000
+ #   node (TP4 attention + EP4 experts on GPUs 0-3 or 4-7, every expert in VRAM, NUMA-pinned); serve/profile-8x.env holds its
+ #   settings and serve/serve-8x.sh starts both replicas. The settings below that the profile also sets are noted there.
+@@ -25,7 +25,23 @@
+ #   agentic tool-use workloads); the default for PROFILE=8x, an opt-in for PROFILE=2x (use with SPEC_K=7; README).
+ set -u
+ REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+-: "${API_KEY:?set API_KEY}"
++# The engine key: read from API_KEY_FILE, never put on a command line. Default: .eb_key two levels above the
++# recipe (the work directory, where the clients read it; outside the recipe, which is mounted into the container). It must
++# be a regular file (not a symlink) owned by this user, mode 600, holding one line of printable characters without spaces.
++# A caller's API_KEY, if set, must equal it (callers that set it from the same file keep working); it is then unset. The
++# key reaches vllm only through a read-only mount and the entrypoint below (VLLM_API_KEY, vLLM's fallback for --api-key),
++# so no command line (ps), no docker inspect field and no container env set by docker run carries it.
++API_KEY_FILE=${API_KEY_FILE:-$(cd "$REPO/../.." && pwd)/.eb_key}
++[[ -f $API_KEY_FILE && ! -L $API_KEY_FILE ]] \
++  || { echo "[serve] API_KEY_FILE=$API_KEY_FILE is missing or not a regular file (a symlink is refused); not starting"; exit 1; }
++[[ -n $(find "$API_KEY_FILE" -maxdepth 0 -type f -user "$(id -u)" -perm 600) ]] \
++  || { echo "[serve] API_KEY_FILE=$API_KEY_FILE must be owned by $(id -un) with mode 600; not starting"; exit 1; }
++unset SERVE_KEY; SERVE_KEY=$(<"$API_KEY_FILE")   # not exported: no child process inherits it
++[[ -n $SERVE_KEY && $SERVE_KEY != *[![:graph:]]* ]] \
++  || { echo "[serve] API_KEY_FILE=$API_KEY_FILE must hold one key: one line of printable characters, no spaces; not starting"; exit 1; }
++[[ -z ${API_KEY+x} || $API_KEY == "$SERVE_KEY" ]] \
++  || { echo "[serve] API_KEY in the environment is not the key in API_KEY_FILE=$API_KEY_FILE; not starting"; exit 1; }
++unset API_KEY
+ PROFILE=${PROFILE:-2x}
+ case $PROFILE in
+   2x) ;;
+@@ -64,7 +80,10 @@
+ FI_ARCH=${FI_ARCH:-12.0f}
+ THINKING=${THINKING:-default}               # default = model decides (on, effort 50); off = force thinking off
+ VISION=${VISION:-1}                         # 1 = load the vision encoder (0.77 GiB bf16; images via the image_url API); 0 = text only
+-PLAN=${PLAN:-plan-1017-agent30-c512.json}   # host-expert plan in plans/; see plans/README.md
++# Host-expert plan: plan-rt-5296.json, fitted to the expert routing of our own agent tasks. Against the recipe's plan it took
++# 2.42% less time per verify step on the mean, lower in 5 of 5 paired blocks, one request at a time (not task time).
++# PLAN=plan-1017-agent30-c512.json serves the previous plan (also 5,296 host experts, with HOST_CACHE=512).
++PLAN=${PLAN:-plan-rt-5296.json}             # host-expert plan in plans/; see plans/README.md
+ HOST_CACHE=${HOST_CACHE:-512}               # VRAM slots per GPU for copies of host experts; must match the plan (README there)
+ CPU_EXPERTS=${CPU_EXPERTS:-0}               # 1 = host experts on a CPU core pool (cpuexp/README.md); 0 = GPU-only (PCIe) path
+ CPU_EXPERTS_PREFILL=${CPU_EXPERTS_PREFILL:-1}   # with CPU_EXPERTS=1: also the host experts of prefill chunks
+@@ -98,6 +117,9 @@
+ if [[ $CPU_EXPERTS == 1 ]]; then
+   export EXL3_CPU_EXPERTS=1 EXL3_CPU_EXPERTS_LIB=${EXL3_CPU_EXPERTS_LIB:-/opt/recipe/cpuexp/build}
+   [[ $CPU_EXPERTS_PREFILL == 1 ]] && export EXL3_CPU_EXPERTS_PREFILL=1
++  # the pool's schedule: 2 regroups the fp32 K partials of decode-sized jobs (served since 1 Nov: 2.07% less time per verify
++  # step in our A/B; its fidelity check was not conclusive, so this is a policy call, easy to revert); 1 = the old schedule
++  export EXL3_CPU_EXPERTS_SCHED=${EXL3_CPU_EXPERTS_SCHED:-2}
+ fi
+ export EXL3_DO EXL3_DO_MOD=$DO_MOD           # the plugin loads kernels/build/$EXL3_DO_MOD (EXL3_DO_DIR overrides the directory)
+ mkdir -p "$CACHE_DIR"
+@@ -154,6 +176,25 @@
+ export VLLM_DS41_DSML_STRICT=${VLLM_DS41_DSML_STRICT:-1}                   # tool calls only from emitted DSML tokens
+ export VLLM_DS41_NAMESPACES=${VLLM_DS41_NAMESPACES:-1}                     # tool namespaces render as "ns::name" (1017 reference)
+ export VLLM_DS41_THINKING_PRECEDENCE=${VLLM_DS41_THINKING_PRECEDENCE:-1}   # thinking=false wins over reasoning_effort
++# V4.1 prompt region cache (patches/vllm/sitecustomize.py's rtx8 hook): repeated prompt regions are encoded once and
++# reused. Served since 1 Nov (5.57 s less server time per pass of our 6-task agent test outside queueing and prefill,
++# prompt ids identical on all eight test starts); 0 encodes every prompt as before. DS41_PROMPT_IDS_LOG (a measurement log) stays off.
++export DS41_REGION_CACHE=${DS41_REGION_CACHE:-1}
++# Moet's sm_120 mHC overlap (vllm-moet): the patched ops/mhc.py and Moet's post-norm kernel, built for this image, mounted
++# from MHC_OVERLAP_DIR; decode batches of at most 64 tokens run the post-mix, collapse and RMSNorm in one kernel with the
++# projection and Sinkhorn on a side stream, larger batches the image's path. Served since 2 Nov: 4.88% less
++# time per verify step, lower in 5 of 5 paired blocks (replayed steps, not task time), after a fidelity check. MHC_OVERLAP=0 serves the image's own
++# ops/mhc.py as before; a host without the directory needs it. The directory must match its SHA256SUMS (README.md,
++# "The mHC overlap") with exactly one .so; ext/ stays writable because torch's JIT load takes a lock file in it.
++MHC_OVERLAP=${MHC_OVERLAP:-1}
++MHC_OVERLAP_DIR=${MHC_OVERLAP_DIR:-$(cd "$REPO/../.." && pwd)/mhc-overlap}
++if [[ $MHC_OVERLAP == 1 ]]; then
++  [[ -f $MHC_OVERLAP_DIR/patched/mhc.py && -d $MHC_OVERLAP_DIR/moet/mhc_overlap && -d $MHC_OVERLAP_DIR/ext && -f $MHC_OVERLAP_DIR/SHA256SUMS ]] \
++    || { echo "[serve] MHC_OVERLAP=1: $MHC_OVERLAP_DIR lacks patched/mhc.py, moet/mhc_overlap, ext or SHA256SUMS (MHC_OVERLAP=0 serves without the overlap)"; exit 1; }
++  ( cd "$MHC_OVERLAP_DIR" && sha256sum --quiet -c SHA256SUMS ) && [[ $(find "$MHC_OVERLAP_DIR/ext" -name '*.so' -type f | grep -c .) == 1 ]] \
++    || { echo "[serve] MHC_OVERLAP=1: $MHC_OVERLAP_DIR does not match its SHA256SUMS or holds other than one .so (README.md); not starting"; exit 1; }
++  DOCKER_EXTRA="${DOCKER_EXTRA:-} -v $MHC_OVERLAP_DIR/patched/mhc.py:/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v41/nvidia/ops/mhc.py:ro -v $MHC_OVERLAP_DIR/moet/mhc_overlap:/opt/moet/mhc_overlap:ro -v $MHC_OVERLAP_DIR/ext:/opt/moet/ext -e VLLM_MOET_MHC_OVERLAP_DIR=/opt/moet/mhc_overlap -e TORCH_EXTENSIONS_DIR=/opt/moet/ext"
++fi
+ extra=()
+ # default: these sizes up to MAX_NUM_SEQS x (1 + SPEC_K), plus that maximum (8 seqs x (1 + 5 DSpark tokens) = 48)
+ if [[ -z ${CAPTURE_SIZES:-} ]]; then
+@@ -177,14 +218,19 @@
+   echo "[serve] DS41_IDX_CHUNK=1 needs patches/vllm/v41-indexer-chunked-decode.diff in the image: rebuild it with docker/build.sh (or MAX_MODEL_LEN=524288 DS41_IDX_CHUNK=0)"; exit 1
+ fi
+ 
++# The container's entrypoint: sh reads the engine key from the read-only mount into VLLM_API_KEY and execs vllm with the
++# arguments below (vllm stays the container's pid 1, as with --entrypoint vllm); an empty or unreadable key stops the start
++# (vLLM with no key would serve without authentication).
++KEY_ENTRY='VLLM_API_KEY=$(cat /run/secrets/engine-key) && [ -n "$VLLM_API_KEY" ] && export VLLM_API_KEY && exec vllm "$@"; echo "[serve] no engine key in /run/secrets/engine-key inside the container; not starting" >&2; exit 1'
+ cleanup() { [ -n "${WPID:-}" ] && kill $WPID 2>/dev/null; docker rm -f "$NAME" >/dev/null 2>&1; }
+ trap 'cleanup; exit 130' INT TERM
+ echo "[serve] profile $PROFILE${REPLICA:+ replica $REPLICA}, GPUs ${DOCKER_GPUS:-all}, TP ${TP:-2}, DSpark $([[ $SPEC == dspark ]] && echo "k=$SPEC_K head $DS41_DRAFTER" || echo off)"
+ echo "[serve] pack $PACK, image $IMAGE, plan $PLAN, host cache $EXL3_HOST_CACHE, CPU host experts $([[ $CPU_EXPERTS == 1 ]] && echo "on (prefill $CPU_EXPERTS_PREFILL)" || echo off), 8-bit prefill all-reduce $([[ $DS41_FP8AR == 1 ]] && echo on || echo off), decode-once kernel $([[ $EXL3_DO == 1 ]] && echo $DO_MOD || echo off)"
+ if [[ $WARMUP == 1 ]]; then
+-  ( t0=$(date +%s); until curl -sf -o /dev/null -H "Authorization: Bearer $API_KEY" "http://127.0.0.1:$PORT/v1/models"; do sleep 5; [ $(( $(date +%s)-t0 )) -gt 3600 ] && exit 0; done
++  # the Authorization header reaches curl through a pipe (@<(printf ...), printf a builtin), not its command line
++  ( t0=$(date +%s); until curl -sf -o /dev/null -H @<(printf 'Authorization: Bearer %s\n' "$SERVE_KEY") "http://127.0.0.1:$PORT/v1/models"; do sleep 5; [ $(( $(date +%s)-t0 )) -gt 3600 ] && exit 0; done
+     echo "[warmup] start"; w0=$(date +%s)
+-    req() { curl -s -o /dev/null -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' "http://127.0.0.1:$PORT/v1/completions" \
++    req() { curl -s -o /dev/null -H @<(printf 'Authorization: Bearer %s\n' "$SERVE_KEY") -H 'Content-Type: application/json' "http://127.0.0.1:$PORT/v1/completions" \
+       -d "{\"model\":\"$SERVED\",\"prompt\":\"$(python3 -c "print(('warm up the kernels with some text. ' * $1).strip())")\",\"max_tokens\":$2,\"temperature\":0}"; }
+     req 400 24; req 1600 24; for i in 1 2 3 4; do req 300 48 & done; wait; req 12 64
+     echo "[warmup] done in $(( $(date +%s)-w0 ))s" ) &
+@@ -194,6 +240,7 @@
+   --memory="$CONTAINER_MEM" --memory-swap="$CONTAINER_MEM" --cap-add IPC_LOCK --ulimit memlock=-1:-1 \
+   -v "$MODELS_DIR":"$MODELS_DIR":ro -v "$CACHE_DIR":/root/.cache -v "$REPO":/opt/recipe:ro \
+   -v "$REPO/patches/vllm/sitecustomize.py":/usr/lib/python3.12/sitecustomize.py:ro \
++  -v "$API_KEY_FILE":/run/secrets/engine-key:ro \
+   ${XMOE_EXT:+-e XMOE_EXT=$XMOE_EXT} \
+   -e TORCH_CUDA_ARCH_LIST=12.0a -e FLASHINFER_CUDA_ARCH_LIST="$FI_ARCH" -e FLASHINFER_DISABLE_VERSION_CHECK=1 \
+   -e VLLM_ENGINE_READY_TIMEOUT_S=3600 -e NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-0} \
+@@ -203,8 +250,8 @@
+   -e NCCL_CUMEM_ENABLE=0 -e NCCL_DEBUG=WARN \
+   -e TILELANG_CACHE_DIR=/root/.cache/tilelang -e TRITON_CACHE_DIR=/root/.cache/triton \
+   $PASS_ENV \
+-  --entrypoint vllm "$IMAGE" serve "$PACK" \
+-  --tensor-parallel-size "${TP:-2}" ${PARALLEL_ARGS:-} --host 0.0.0.0 --port "$PORT" --api-key "$API_KEY" \
++  --entrypoint sh "$IMAGE" -c "$KEY_ENTRY" vllm serve "$PACK" \
++  --tensor-parallel-size "${TP:-2}" ${PARALLEL_ARGS:-} --host 0.0.0.0 --port "$PORT" \
+   --max-model-len "$MAX_MODEL_LEN" --kv-cache-dtype fp8 --kv-cache-memory "$KV_MEM" \
+   --gpu-memory-utilization "$UTIL" --max-num-seqs "$MAX_NUM_SEQS" --max-num-batched-tokens "$MAX_BATCHED" \
+   --kernel-config '{"enable_flashinfer_autotune":false,"enable_jit_warmup":false}' \

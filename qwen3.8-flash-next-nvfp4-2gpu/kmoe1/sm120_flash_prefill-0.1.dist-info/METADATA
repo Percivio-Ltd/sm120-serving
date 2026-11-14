@@ -1,0 +1,4 @@
+Metadata-Version: 2.1
+Name: sm120-flash-prefill
+Version: 0.1
+Summary: K-MOE Flash prefill GEMM patch (vLLM general plugin)

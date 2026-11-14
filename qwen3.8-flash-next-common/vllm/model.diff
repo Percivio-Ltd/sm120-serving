@@ -1,0 +1,72 @@
+--- a/vllm/models/qwen4_exp/nvidia/model.py
++++ b/vllm/models/qwen4_exp/nvidia/model.py
+@@ -1,5 +1,11 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++# SPDX-FileCopyrightText: Copyright 2026 Percivio Ltd (modifications)
++#
++# Modified by Percivio Ltd in October 2026: adds EAGLE-3 style auxiliary hidden-state capture to the Qwen4Exp model
++# (inactive with MTP drafting).
++# Based on vllm/models/qwen4_exp/nvidia/model.py at vLLM commit
++# c50aca14416ef29f6ed0ed256302f30646726dcd; model.diff holds the full change.
+ """Inference-only Qwen4Exp model."""
+ 
+ from collections.abc import Iterable
+@@ -34,6 +40,7 @@
+     VocabParallelEmbedding,
+ )
+ from vllm.model_executor.models.interfaces import (
++    EagleModelMixin,
+     HasInnerState,
+     IsHybrid,
+     MixtureOfExperts,
+@@ -404,7 +411,7 @@
+             moe.experts.update_expert_map()
+ 
+ 
+-class Qwen4ExpModel(nn.Module):
++class Qwen4ExpModel(nn.Module, EagleModelMixin):
+     hf_to_vllm_mapper = Qwen3_5Model.hf_to_vllm_mapper | _EXTRA_WEIGHTS_MAPPER
+ 
+     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
+@@ -544,6 +551,7 @@
+         block_output = None
+         injection = None
+         last_layer = None
++        aux_hidden_states: list[torch.Tensor] = []
+         if self.start_layer < self.end_layer:
+             self._start_layer_ple_prefetch(
+                 self.layers[self.start_layer],
+@@ -554,6 +562,23 @@
+         for layer_idx, layer in islice(
+             enumerate(self.layers), self.start_layer, self.end_layer
+         ):
++            if layer_idx in self.aux_hidden_state_layers:
++                # DFlash/EAGLE-3 capture: the completed output of the previous layer
++                # (pending MLP combine materialized; the next mix is then unfused, with
++                # identical math), averaged over the hyper-connection streams.
++                assert not self.use_hc_sequence_parallel
++                if block_output is not None:
++                    assert last_layer is not None
++                    hidden_states = last_layer.mlp_hyper_connection.combine(
++                        hidden_states, block_output, injection
++                    )
++                    block_output = None
++                    injection = None
++                aux_hidden_states.append(
++                    hidden_states.unflatten(
++                        -1, (self.config.hc_count, self.config.hidden_size)
++                    ).mean(dim=-2)
++                )
+             last_layer = layer
+             if layer_idx + 1 < self.end_layer:
+                 self._start_layer_ple_prefetch(
+@@ -637,6 +662,8 @@
+             # this tensor is needed by the final mixer regardless).
+             num_tokens = multi_hidden.shape[0]
+             self._mtp_hidden_buffer[:num_tokens].copy_(multi_hidden)
++        if aux_hidden_states:
++            return sample_hidden_states, aux_hidden_states
+         return sample_hidden_states
+ 
+     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:

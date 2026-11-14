@@ -1,0 +1,865 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# SPDX-FileCopyrightText: Copyright 2026 Percivio Ltd (modifications)
+#
+# Modified by Percivio Ltd in October 2026: adds SM120 skinny-GEMM plans (QWEN4_EXP_SM120_PLANS), an FP8
+# weight-only decode GEMM for BF16 linears (QWEN4_EXP_W8A16), an INT4 group-128 output head
+# (QWEN4_EXP_LMHEAD_INT4) and the switch for the fused hyper-connection path (QWEN4_EXP_HC_FUSED).
+# Based on vllm/models/qwen4_exp/nvidia/low_latency_gemm.py at vLLM commit
+# c50aca14416ef29f6ed0ed256302f30646726dcd; low_latency_gemm.diff holds the full change.
+"""Qwen4Exp decode GEMM selection on Hopper and Blackwell.
+
+Dispatch follows Kimi-K3 and uses the local ``(N, K)`` shape and token count.
+Plans contain measured CUDA graph capture sizes; other token counts use the
+standard linear implementation.
+"""
+
+import torch
+from torch import nn
+
+import vllm.envs as envs
+from vllm.model_executor.kernels.linear.cute_dsl.skinny_gemm import (
+    SkinnyGemmConfig,
+    row_stride_ok,
+    shape_dynamic_skinny_gemm,
+)
+from vllm.model_executor.layers.linear import LinearBase, UnquantizedLinearMethod
+from vllm.model_executor.layers.vocab_parallel_embedding import (
+    ParallelLMHead,
+    UnquantizedEmbeddingMethod,
+)
+from vllm.platforms import current_platform
+from vllm.utils.torch_utils import direct_register_custom_op
+
+QWEN4_EXP_SM103_GEMM_PLANS: dict[tuple[int, int], dict[int, SkinnyGemmConfig]] = {
+    # GDN fused QKVZ projection, TP=4.
+    (4096, 2560): {
+        1: SkinnyGemmConfig(1, 64, 4, k_unroll=4),
+        2: SkinnyGemmConfig(2, 64, 4, k_unroll=4),
+    },
+    # GDN and QSA output projections, TP=4.
+    (2560, 1536): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=2, vector_width=4),
+        2: SkinnyGemmConfig(2, 128, 2, k_unroll=2, vector_width=4),
+        4: SkinnyGemmConfig(4, 64, 2, k_unroll=2),
+    },
+    # GDN fused B/A projection, TP=4.
+    (24, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=4, vector_width=4),
+        2: SkinnyGemmConfig(2, 128, 2, k_unroll=4, vector_width=4),
+        4: SkinnyGemmConfig(4, 128, 2, k_unroll=4, vector_width=4),
+        8: SkinnyGemmConfig(8, 128, 1, k_unroll=4, vector_width=4),
+        16: SkinnyGemmConfig(16, 128, 1, k_unroll=4, vector_width=4),
+    },
+    # QSA fused QKV/gate + replicated indexer Q/K, TP=4 (GB300).
+    (4224, 2560): {
+        1: SkinnyGemmConfig(1, 128, 4, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 2, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 4, vector_width=4, static_k=2560),
+    },
+    # Shared-expert fused gate/up projection, TP=4.
+    (320, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=4, vector_width=4),
+        2: SkinnyGemmConfig(2, 128, 2, k_unroll=4, vector_width=4),
+        4: SkinnyGemmConfig(4, 128, 2, k_unroll=4, vector_width=4),
+        8: SkinnyGemmConfig(8, 64, 1, k_unroll=4),
+        16: SkinnyGemmConfig(16, 128, 2, k_unroll=4, vector_width=4),
+    },
+    # LM head, TP=4.
+    (62080, 2560): {
+        1: SkinnyGemmConfig(1, 64, 4, k_unroll=2),
+        2: SkinnyGemmConfig(2, 32, 4, k_unroll=2),
+    },
+}
+
+# H200 plans selected by exhaustive CUDA graph replay measurements over
+# M={1, 2, 4, 8, 16}. Only points that beat the standard linear implementation
+# in both hot-cache and L2-flush measurements are retained; other token counts
+# keep the standard implementation and its GEMM heuristics.
+QWEN4_EXP_SM90_GEMM_PLANS: dict[tuple[int, int], dict[int, SkinnyGemmConfig]] = {
+    # GDN fused QKVZ projection, TP=4.
+    (4096, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 4, vector_width=4, static_k=2560),
+    },
+    # QSA fused QKV/gate + replicated indexer Q/K, TP=4.
+    (4224, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=6, vector_width=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 2, k_unroll=3, vector_width=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 4, k_unroll=1, vector_width=8),
+    },
+    # GDN and QSA output projections, TP=4.
+    (2560, 1536): {
+        1: SkinnyGemmConfig(1, 128, 4, vector_width=2, static_k=1536),
+        2: SkinnyGemmConfig(2, 128, 4, vector_width=4, static_k=1536),
+        4: SkinnyGemmConfig(4, 64, 4, k_unroll=6, vector_width=4),
+    },
+    # GDN fused B/A projection, TP=4.
+    (24, 2560): {
+        1: SkinnyGemmConfig(1, 128, 3, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 2, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 1, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 1, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 128, 1, vector_width=4, static_k=2560),
+    },
+    # Shared-expert fused gate/up projection, TP=4.
+    (320, 2560): {
+        1: SkinnyGemmConfig(1, 64, 2, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 4, k_unroll=5, vector_width=4),
+        4: SkinnyGemmConfig(4, 160, 1, k_unroll=2),
+        8: SkinnyGemmConfig(8, 128, 1, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 128, 1, vector_width=4, static_k=2560),
+    },
+    # LM head, TP=4.
+    (62080, 2560): {
+        1: SkinnyGemmConfig(1, 64, 2, vector_width=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 2, vector_width=2, static_k=2560),
+    },
+    # Final HC down projection, replicated in a TP=4 deployment.
+    (320, 10240): {
+        1: SkinnyGemmConfig(1, 256, 1, static_k=10240),
+        2: SkinnyGemmConfig(2, 128, 1, k_unroll=10),
+        4: SkinnyGemmConfig(4, 128, 1, k_unroll=10),
+        8: SkinnyGemmConfig(8, 128, 1, k_unroll=10),
+    },
+}
+
+
+# B200 plans; the winning configs differ from the B300 table.
+QWEN4_EXP_SM100_GEMM_PLANS: dict[tuple[int, int], dict[int, SkinnyGemmConfig]] = {
+    # GDN fused B/A projection, TP=4.
+    (24, 2560): {
+        1: SkinnyGemmConfig(1, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 2, k_unroll=4, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 128, 1, k_unroll=2, vector_width=4, static_k=2560),
+    },
+    # Shared-expert fused gate/up projection, TP=4.
+    (320, 2560): {
+        1: SkinnyGemmConfig(1, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 160, 1, k_unroll=2, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 128, 1, vector_width=4, static_k=2560),
+    },
+    # Final HC down projection, replicated in a TP=4 deployment.
+    (320, 10240): {
+        1: SkinnyGemmConfig(1, 256, 1, k_unroll=4, static_k=10240),
+        2: SkinnyGemmConfig(2, 256, 1, k_unroll=4, static_k=10240),
+        4: SkinnyGemmConfig(4, 256, 1, k_unroll=2),
+        8: SkinnyGemmConfig(8, 256, 1),
+    },
+    # GDN and QSA output projections, TP=4.
+    (2560, 1536): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=2, vector_width=4, static_k=1536),
+        2: SkinnyGemmConfig(2, 64, 2, k_unroll=2, static_k=1536),
+        4: SkinnyGemmConfig(4, 64, 2, k_unroll=2, static_k=1536),
+    },
+    # QSA fused QKV/gate + replicated indexer Q/K, TP=4.
+    (4224, 2560): {
+        1: SkinnyGemmConfig(1, 128, 4, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 2, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 4, vector_width=4, static_k=2560),
+    },
+    # GDN fused QKVZ projection, TP=4.
+    (4096, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 2, k_unroll=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 2, k_unroll=4, vector_width=4, static_k=2560),
+    },
+    # LM head, TP=4.
+    (62080, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=4, vector_width=4),
+    },
+}
+
+
+# DGX Spark (GB10) plans for TP=1 and TP=2 local shapes.
+QWEN4_EXP_SM121_GEMM_PLANS: dict[tuple[int, int], dict[int, SkinnyGemmConfig]] = {
+    # Shared-expert gate.
+    (1, 2560): {
+        1: SkinnyGemmConfig(1, 64, 1, k_unroll=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 1, k_unroll=2, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 128, 1, vector_width=2, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 128, 1, vector_width=4, static_k=2560),
+    },
+    # GDN fused B/A projection, TP=2.
+    (48, 2560): {
+        1: SkinnyGemmConfig(1, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 2, k_unroll=4, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 1, k_unroll=4, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 128, 1, k_unroll=2, vector_width=4, static_k=2560),
+    },
+    # GDN fused B/A projection.
+    (96, 2560): {
+        1: SkinnyGemmConfig(1, 128, 4, k_unroll=2, vector_width=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 4, vector_width=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 128, 4, vector_width=2, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 4, k_unroll=2, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 64, 1),
+    },
+    # Router.
+    (512, 2560): {
+        1: SkinnyGemmConfig(1, 256, 1, k_unroll=4, vector_width=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 256, 1, k_unroll=4, vector_width=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 1, k_unroll=2, static_k=2560),
+        8: SkinnyGemmConfig(8, 64, 2, static_k=2560),
+        16: SkinnyGemmConfig(16, 64, 2, k_unroll=2, static_k=2560),
+    },
+    # Shared-expert fused gate/up, TP=2; retain after indexer fusion.
+    (640, 2560): {
+        1: SkinnyGemmConfig(1, 256, 1, vector_width=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 256, 1, vector_width=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 128, 1, k_unroll=2, vector_width=4, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 1, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 64, 1, static_k=2560),
+    },
+    # Shared-expert fused gate/up projection.
+    (1280, 2560): {
+        1: SkinnyGemmConfig(1, 32, 1, k_unroll=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 1, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 128, 1, k_unroll=4, vector_width=2, static_k=2560),
+        8: SkinnyGemmConfig(8, 128, 1, k_unroll=2, vector_width=2, static_k=2560),
+        16: SkinnyGemmConfig(16, 32, 1, k_unroll=2, static_k=2560),
+    },
+    # Shared-expert down projection.
+    (2560, 640): {
+        1: SkinnyGemmConfig(1, 64, 1, k_unroll=4, vector_width=2, static_k=640),
+        2: SkinnyGemmConfig(2, 64, 1, vector_width=2, static_k=640),
+        4: SkinnyGemmConfig(4, 64, 1, vector_width=2, static_k=640),
+        8: SkinnyGemmConfig(8, 32, 1, k_unroll=4, vector_width=4, static_k=640),
+        16: SkinnyGemmConfig(16, 32, 1, k_unroll=2, vector_width=4, static_k=640),
+    },
+    # GDN and QSA output projections, TP=2.
+    (2560, 3072): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=2, vector_width=4, static_k=3072),
+        2: SkinnyGemmConfig(2, 64, 2, k_unroll=2, static_k=3072),
+        4: SkinnyGemmConfig(4, 64, 2, k_unroll=2, static_k=3072),
+    },
+    # GDN and QSA output projections.
+    (2560, 6144): {
+        1: SkinnyGemmConfig(1, 64, 2, vector_width=4, static_k=6144),
+        2: SkinnyGemmConfig(2, 64, 1, k_unroll=4, vector_width=4, static_k=6144),
+        4: SkinnyGemmConfig(4, 64, 1, k_unroll=4, vector_width=4, static_k=6144),
+        8: SkinnyGemmConfig(8, 128, 1, vector_width=2, static_k=6144),
+        16: SkinnyGemmConfig(16, 32, 1, static_k=6144),
+    },
+    # QSA fused QKV/gate projection, TP=2 (LoRA keeps the indexer projection separate).
+    (6656, 2560): {
+        1: SkinnyGemmConfig(1, 128, 4, k_unroll=2, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 4, k_unroll=2, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 2, k_unroll=4, vector_width=4, static_k=2560),
+    },
+    # QSA fused QKV/gate + replicated indexer Q/K projection, TP=2.
+    (7296, 2560): {
+        1: SkinnyGemmConfig(1, 32, 1, vector_width=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 32, 1, vector_width=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 32, 1, vector_width=2, static_k=2560),
+        8: SkinnyGemmConfig(8, 32, 1, vector_width=2, static_k=2560),
+        16: SkinnyGemmConfig(16, 32, 4, vector_width=2, static_k=2560),
+    },
+    # GDN fused QKVZ projection, TP=2.
+    (8192, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 64, 2, k_unroll=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 64, 2, k_unroll=4, vector_width=4, static_k=2560),
+    },
+    # HC up projection.
+    (10240, 320): {
+        1: SkinnyGemmConfig(1, 32, 1, k_unroll=2, vector_width=2, static_k=320),
+        2: SkinnyGemmConfig(2, 32, 1, vector_width=2, static_k=320),
+        4: SkinnyGemmConfig(4, 32, 1, k_unroll=2, vector_width=2, static_k=320),
+        8: SkinnyGemmConfig(8, 32, 1, vector_width=2, static_k=320),
+    },
+    # QSA fused QKV/gate + replicated indexer Q/K projection.
+    (13952, 2560): {
+        1: SkinnyGemmConfig(1, 32, 1, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 32, 1, k_unroll=2, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 32, 1, vector_width=4, static_k=2560),
+        8: SkinnyGemmConfig(8, 64, 1, vector_width=2, static_k=2560),
+        16: SkinnyGemmConfig(16, 32, 1, k_unroll=2, vector_width=4, static_k=2560),
+    },
+    # GDN fused QKVZ projection.
+    (16384, 2560): {
+        1: SkinnyGemmConfig(1, 32, 1, k_unroll=4, vector_width=2, static_k=2560),
+        2: SkinnyGemmConfig(2, 32, 1, vector_width=2, static_k=2560),
+        4: SkinnyGemmConfig(4, 32, 1, k_unroll=2, vector_width=2, static_k=2560),
+        8: SkinnyGemmConfig(8, 64, 1, vector_width=2, static_k=2560),
+        16: SkinnyGemmConfig(16, 32, 1, k_unroll=2, vector_width=2, static_k=2560),
+    },
+    # LM head, TP=2.
+    (124160, 2560): {
+        1: SkinnyGemmConfig(1, 128, 2, k_unroll=4, vector_width=4),
+        2: SkinnyGemmConfig(2, 64, 2, k_unroll=2),
+    },
+    # LM head.
+    (248320, 2560): {
+        1: SkinnyGemmConfig(1, 128, 1, k_unroll=2, vector_width=4, static_k=2560),
+        2: SkinnyGemmConfig(2, 128, 1, k_unroll=2, vector_width=4, static_k=2560),
+        4: SkinnyGemmConfig(4, 32, 1, vector_width=4, static_k=2560),
+        8: SkinnyGemmConfig(8, 64, 1, k_unroll=2, vector_width=4, static_k=2560),
+        16: SkinnyGemmConfig(16, 128, 1, k_unroll=2, vector_width=4, static_k=2560),
+    },
+}
+
+
+QWEN4_EXP_GEMM_PLANS_BY_CAPABILITY: dict[
+    tuple[int, int] | None, dict[tuple[int, int], dict[int, SkinnyGemmConfig]]
+] = {
+    (10, 3): QWEN4_EXP_SM103_GEMM_PLANS,
+    (10, 0): QWEN4_EXP_SM100_GEMM_PLANS,
+    (9, 0): QWEN4_EXP_SM90_GEMM_PLANS,
+    (12, 1): QWEN4_EXP_SM121_GEMM_PLANS,
+}
+
+
+def _load_json_plans(path: str | None) -> dict[tuple[int, int], dict[int, SkinnyGemmConfig]] | None:
+    """SM120 (RTX PRO 6000) plans measured by tune_skinny.py; upstream ships none."""
+    import json
+    import os
+
+    if not path or not os.path.exists(path):
+        return None
+    plans: dict[tuple[int, int], dict[int, SkinnyGemmConfig]] = {}
+    for rec in json.load(open(path)).values():
+        if rec.get("config") is None:
+            continue
+        plans.setdefault((rec["n"], rec["k"]), {})[rec["m"]] = SkinnyGemmConfig(**rec["config"])
+    return plans
+
+
+_SM120_PLANS = _load_json_plans(__import__("os").environ.get("QWEN4_EXP_SM120_PLANS"))
+if _SM120_PLANS is not None:
+    QWEN4_EXP_GEMM_PLANS_BY_CAPABILITY[(12, 0)] = _SM120_PLANS
+
+
+# FP8 weight-only decode GEMM (QWEN4_EXP_W8A16). Listed BF16 linears keep e4m3 weights with one
+# fp32 scale per output row (amax / 448); decode batches (M <= 16) run a Triton skinny GEMM that
+# reads half the bytes, larger batches (prefill) dequantize and use F.linear. The value is a comma
+# list of NxK[:BN/BK/SPLIT_K/warps/stages]; a leading "1" stands for the default shapes.
+import os  # noqa: E402
+
+import triton  # noqa: E402
+import triton.language as tl  # noqa: E402
+
+_W8_DEFAULT = "8192x2560,7296x2560,2560x3072,10240x320"
+_W8_CFG_DEFAULT = {(10240, 320): (64, 64, 1, 4, 4), (2560, 3072): (32, 256, 1, 4, 3)}
+_W8_MAX_M = 16
+
+
+def _parse_w8_shapes(value: str | None) -> dict[tuple[int, int], tuple[int, ...]]:
+    if not value:
+        return {}
+    shapes = {}
+    items = value.split(",")
+    if items[0] == "1":
+        items = _W8_DEFAULT.split(",") + items[1:]
+    for item in items:
+        shape, _, cfg = item.partition(":")
+        n, k = (int(t) for t in shape.split("x"))
+        shapes[(n, k)] = (tuple(int(t) for t in cfg.split("/")) if cfg
+                          else _W8_CFG_DEFAULT.get((n, k), (32, 128, 1, 4, 4)))
+    return shapes
+
+
+_W8_SHAPES = _parse_w8_shapes(os.environ.get("QWEN4_EXP_W8A16"))
+_W8_FREE_BF16 = os.environ.get("QWEN4_EXP_W8A16_FREE", "1") == "1"
+
+
+@triton.jit
+def _w8a16_epilogue(acc, s_ptr, y_ptr, rm, rn, M, N, stride_y, inv_hc, SILU_N: tl.constexpr):
+    s = tl.load(s_ptr + rn, mask=rn < N, other=0.0)
+    acc = acc * s[None, :]
+    if SILU_N > 0:
+        # Qwen4Exp HC down: SiLU(x / hc) on the low-rank columns, raw injection logits after them.
+        v = acc * inv_hc
+        acc = tl.where(rn[None, :] < SILU_N, v * tl.sigmoid(v), acc)
+    mask = (rm[:, None] < M) & (rn[None, :] < N)
+    tl.store(y_ptr + rm[:, None] * stride_y + rn[None, :], acc.to(tl.bfloat16), mask=mask)
+
+
+@triton.jit
+def _l2_prefetch_rows(addr, nbytes):
+    # One bulk (TMA-engine) L2 prefetch per weight row slice; no registers or shared memory held.
+    return tl.inline_asm_elementwise(
+        "mov.u32 $0, 0;\n\tcp.async.bulk.prefetch.L2.global [$1], $2;", "=r,l,r",
+        [addr, nbytes], dtype=tl.int32, is_pure=False, pack=1)
+
+
+@triton.jit
+def _w8a16_kernel(x_ptr, w_ptr, s_ptr, y_ptr, ws_ptr, cnt_ptr, M, N, stride_x, stride_y, inv_hc,
+                  K: tl.constexpr, SILU_N: tl.constexpr, BLOCK_M: tl.constexpr,
+                  BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr, SPLIT_K: tl.constexpr,
+                  PREFETCH: tl.constexpr, launch_pdl: tl.constexpr):
+    # Grid (N tiles, SPLIT_K). With SPLIT_K > 1 every program adds its partial tile into an fp32
+    # workspace; the last program of a tile (ticket counter) swaps the sum out, which also zeroes
+    # the workspace for the next call, resets the counter and runs the epilogue. One launch, no
+    # memset, so it is safe to replay in CUDA graphs.
+    # PREFETCH issues the program's whole weight slice to L2 up front, so DRAM latency is paid
+    # once instead of once per pipeline stage. With programmatic dependent launch the prefetch
+    # (weights only) runs before the grid-dependency wait, overlapping the previous kernel.
+    pid_n = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    rm = tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    k_per: tl.constexpr = (K + SPLIT_K * BLOCK_K - 1) // (SPLIT_K * BLOCK_K) * BLOCK_K
+    k0 = pid_k * k_per
+    if PREFETCH:
+        rows = tl.minimum(rn, N - 1).to(tl.int64)
+        nbytes = tl.minimum(K - k0, k_per)
+        if nbytes > 0:
+            addr = w_ptr.to(tl.int64) + rows * K + k0
+            _l2_prefetch_rows(addr, tl.full((BLOCK_N,), 0, tl.int32) + nbytes)
+    if launch_pdl:
+        tl.extra.cuda.gdc_wait()
+        tl.extra.cuda.gdc_launch_dependents()
+    for kk in range(k0, k0 + k_per, BLOCK_K):
+        rk = kk + tl.arange(0, BLOCK_K)
+        x = tl.load(x_ptr + rm[:, None] * stride_x + rk[None, :],
+                    mask=(rm[:, None] < M) & (rk[None, :] < K), other=0.0)
+        w = tl.load(w_ptr + rn[:, None] * K + rk[None, :],
+                    mask=(rn[:, None] < N) & (rk[None, :] < K), other=0.0)
+        acc += tl.dot(x, tl.trans(w.to(tl.bfloat16)))
+    if SPLIT_K == 1:
+        _w8a16_epilogue(acc, s_ptr, y_ptr, rm, rn, M, N, stride_y, inv_hc, SILU_N)
+    else:
+        tile = (ws_ptr + pid_n * BLOCK_M * BLOCK_N + rm[:, None] * BLOCK_N
+                + tl.arange(0, BLOCK_N)[None, :])
+        tl.atomic_add(tile, acc, sem="relaxed")
+        tl.debug_barrier()
+        ticket = tl.atomic_add(cnt_ptr + pid_n, 1, sem="acq_rel")
+        if ticket == SPLIT_K - 1:
+            total = tl.atomic_xchg(tile, tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32),
+                                   sem="acq_rel")
+            tl.atomic_xchg(cnt_ptr + pid_n, 0, sem="relaxed")
+            _w8a16_epilogue(total, s_ptr, y_ptr, rm, rn, M, N, stride_y, inv_hc, SILU_N)
+
+
+_W8_PREFETCH = os.environ.get("QWEN4_EXP_W8_PREFETCH", "1") == "1"
+_W8_PDL = os.environ.get("QWEN4_EXP_W8_PDL", "1") == "1"
+
+
+def _w8_pdl() -> bool:
+    return _W8_PDL and current_platform.is_arch_support_pdl()
+
+
+_SMS: dict[int, int] = {}
+
+
+def _num_sms(device: torch.device) -> int:
+    i = device.index if device.index is not None else torch.cuda.current_device()
+    if i not in _SMS:
+        _SMS[i] = torch.cuda.get_device_properties(i).multi_processor_count
+    return _SMS[i]
+
+
+def w8_config(n: int, k: int) -> tuple[int, ...]:
+    return _W8_SHAPES.get((n, k), (32, 128, 1, 4, 4))
+
+
+def w8_workspace(n: int, k: int, device) -> tuple[torch.Tensor, torch.Tensor]:
+    """Split-K workspace (fp32 tiles) and ticket counters, zeroed once; the kernel keeps them zero."""
+    bn, _, sk, _, _ = w8_config(n, k)
+    tiles = triton.cdiv(n, bn) if sk > 1 else 1
+    return (torch.zeros(tiles * _W8_MAX_M * bn, dtype=torch.float32, device=device),
+            torch.zeros(tiles, dtype=torch.int32, device=device))
+
+
+def _qwen4_exp_w8a16_gemm(x: torch.Tensor, w8: torch.Tensor, scale: torch.Tensor,
+                          ws: torch.Tensor, cnt: torch.Tensor, silu_n: int = 0,
+                          inv_hc: float = 1.0) -> torch.Tensor:
+    shape = x.shape
+    x = x.reshape(-1, shape[-1])
+    M, K = x.shape
+    N = w8.shape[0]
+    if M > _W8_MAX_M or M == 0:
+        w = (w8.to(torch.float32) * scale[:, None]).to(x.dtype)
+        y = torch.nn.functional.linear(x, w)
+        if silu_n:
+            v = y[:, :silu_n].float() * inv_hc
+            y[:, :silu_n] = (v * torch.sigmoid(v)).to(y.dtype)
+        return y.reshape(*shape[:-1], N)
+    if x.stride(1) != 1:
+        x = x.contiguous()
+    bn, bk, sk, warps, stages = w8_config(N, K)
+    y = torch.empty((M, N), dtype=x.dtype, device=x.device)
+    nt = triton.cdiv(N, bn)
+    # Multi-wave grids (the lm_head) already stream at full bandwidth; prefetch only single-wave ones.
+    pf = _W8_PREFETCH and nt * sk <= 4 * _num_sms(x.device)
+    _w8a16_kernel[(nt, sk)](
+        x, w8, scale, y, ws, cnt, M, N, x.stride(0), y.stride(0), inv_hc, K=K, SILU_N=silu_n,
+        BLOCK_M=_W8_MAX_M, BLOCK_N=bn, BLOCK_K=bk, SPLIT_K=sk, PREFETCH=pf, launch_pdl=_w8_pdl(),
+        num_warps=warps, num_stages=stages)
+    return y.reshape(*shape[:-1], N)
+
+
+def _qwen4_exp_w8a16_gemm_fake(x: torch.Tensor, w8: torch.Tensor, scale: torch.Tensor,
+                               ws: torch.Tensor, cnt: torch.Tensor, silu_n: int = 0,
+                               inv_hc: float = 1.0) -> torch.Tensor:
+    return x.new_empty((*x.shape[:-1], w8.shape[0]))
+
+
+direct_register_custom_op(
+    op_name="qwen4_exp_w8a16_gemm",
+    op_func=_qwen4_exp_w8a16_gemm,
+    mutates_args=["ws", "cnt"],
+    fake_impl=_qwen4_exp_w8a16_gemm_fake,
+)
+
+
+def w8a16_linear(layer: nn.Module, x: torch.Tensor, silu_n: int = 0,
+                 inv_hc: float = 1.0) -> torch.Tensor:
+    return torch.ops.vllm.qwen4_exp_w8a16_gemm(x, layer.w8_weight, layer.w8_scale, layer.w8_ws,
+                                               layer.w8_cnt, silu_n, inv_hc)
+
+
+def quantize_rows_fp8(w: torch.Tensor, rows: int = 16384) -> tuple[torch.Tensor, torch.Tensor]:
+    """Per-output-row e4m3 weights and fp32 scales (amax / 448), in row chunks."""
+    w8 = torch.empty(w.shape, dtype=torch.float8_e4m3fn, device=w.device)
+    scale = torch.empty(w.shape[0], dtype=torch.float32, device=w.device)
+    for r0 in range(0, w.shape[0], rows):
+        chunk = w[r0:r0 + rows].float()
+        s = (chunk.abs().amax(dim=1) / 448.0).clamp(min=1e-12)
+        w8[r0:r0 + rows] = (chunk / s[:, None]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+        scale[r0:r0 + rows] = s
+    return w8, scale
+
+
+class Qwen4ExpW8A16LinearMethod(UnquantizedLinearMethod):
+    """Decode GEMMs read FP8 rows; the BF16 weight is freed unless QWEN4_EXP_W8A16_FREE=0."""
+
+    free_bf16 = True
+
+    def process_weights_after_loading(self, layer: nn.Module) -> None:
+        super().process_weights_after_loading(layer)
+        w = layer.weight.data
+        layer.w8_weight, layer.w8_scale = quantize_rows_fp8(w)
+        layer.w8_ws, layer.w8_cnt = w8_workspace(w.shape[0], w.shape[1], w.device)
+        if self.free_bf16 and _W8_FREE_BF16:
+            layer.weight = nn.Parameter(w.new_empty(0, w.shape[1]), requires_grad=False)
+
+    def apply(
+        self,
+        layer: nn.Module,
+        x: torch.Tensor,
+        bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        y = w8a16_linear(layer, x)
+        return y if bias is None else y + bias
+
+
+class Qwen4ExpW8A16EmbeddingMethod(UnquantizedEmbeddingMethod):
+    """FP8 rows for the lm_head logits GEMM; the BF16 table stays (embedding / draft head)."""
+
+    def process_weights_after_loading(self, layer: nn.Module) -> None:
+        super().process_weights_after_loading(layer)
+        w = layer.weight.data
+        layer.w8_weight, layer.w8_scale = quantize_rows_fp8(w)
+        layer.w8_ws, layer.w8_cnt = w8_workspace(w.shape[0], w.shape[1], w.device)
+
+    def apply(
+        self,
+        layer: nn.Module,
+        x: torch.Tensor,
+        bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        y = w8a16_linear(layer, x)
+        return y if bias is None else y + bias
+
+
+# INT4 lm_head (QWEN4_EXP_LMHEAD_INT4 = "1" or BLOCK_N/warps/stages/groups per iteration): group-128
+# rows with FP16 scales, half the FP8 head's bytes. It changes the target logits.
+_I4_GROUP = 128
+_I4_HEAD = os.environ.get("QWEN4_EXP_LMHEAD_INT4", "0")
+_I4_CFG = ((32, 4, 3, 2) if _I4_HEAD == "1"
+           else None if _I4_HEAD in ("", "0") else tuple(int(t) for t in _I4_HEAD.split("/")))
+
+
+@triton.jit
+def _i4_logits_kernel(x_ptr, w_ptr, s_ptr, y_ptr, M, N, stride_x, stride_y,
+                      K: tl.constexpr, G: tl.constexpr, GPI: tl.constexpr,
+                      BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+    # As the INT4 draft head (mtp_speculator_q4.py), with full logits instead of a per-tile argmax.
+    # Byte j of group g holds elements g*G + j (low nibble) and g*G + G/2 + j (high nibble), each
+    # stored as q + 8; BF16 bits 0x4300 | n are exactly 128 + n for n < 16, so q = that - 136 without
+    # an int-to-float conversion. The integer dots are exact and scaled once per group in FP32.
+    pid = tl.program_id(0)
+    rn = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    rm = tl.arange(0, BLOCK_M)
+    rb = tl.arange(0, G // 2)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for g0 in range(0, K // G, GPI):
+        for gg in tl.static_range(GPI):
+            g = g0 + gg
+            q = tl.load(w_ptr + rn[:, None] * (K // 2) + g * (G // 2) + rb[None, :],
+                        mask=rn[:, None] < N, other=0x88)
+            lo = ((q & 15).to(tl.uint16) | 0x4300).to(tl.bfloat16, bitcast=True) - 136.0
+            hi = ((q >> 4).to(tl.uint16) | 0x4300).to(tl.bfloat16, bitcast=True) - 136.0
+            xp = x_ptr + rm[:, None] * stride_x + g * G + rb[None, :]
+            x0 = tl.load(xp, mask=rm[:, None] < M, other=0.0)
+            x1 = tl.load(xp + G // 2, mask=rm[:, None] < M, other=0.0)
+            sc = tl.load(s_ptr + rn * (K // G) + g, mask=rn < N, other=0.0).to(tl.float32)
+            acc += (tl.dot(x0, tl.trans(lo)) + tl.dot(x1, tl.trans(hi))) * sc[None, :]
+    mask = (rm[:, None] < M) & (rn[None, :] < N)
+    tl.store(y_ptr + rm[:, None] * stride_y + rn[None, :], acc.to(tl.bfloat16), mask=mask)
+
+
+def quantize_rows_int4(w: torch.Tensor, group: int = _I4_GROUP, chunk: int = 4096,
+                       clips=(1.0, 0.95, 0.9, 0.85, 0.8, 0.75)) -> tuple[torch.Tensor, torch.Tensor]:
+    """Symmetric INT4 rows with one FP16 scale per group, the clip ratio chosen per group for least
+    squared error; packed [N, K / 2] uint8 (see _i4_logits_kernel) and [N, K / group] scales."""
+    n, k = w.shape
+    q = torch.empty(n, k // 2, dtype=torch.uint8, device=w.device)
+    sc = torch.empty(n, k // group, dtype=torch.float16, device=w.device)
+    for r0 in range(0, n, chunk):
+        blk = w[r0:r0 + chunk].float().view(-1, k // group, group)
+        amax = blk.abs().amax(dim=-1, keepdim=True).clamp(min=1e-8)
+        best = None
+        for c in clips:
+            s = (amax * (c / 7.0)).half().float()  # the error is measured with the stored scale
+            qq = (blk / s).round().clamp(-8, 7)
+            err = (qq * s - blk).square().sum(dim=-1, keepdim=True)
+            if best is None:
+                best = [err, qq, s]
+            else:
+                m = err < best[0]
+                best = [torch.where(m, err, best[0]), torch.where(m, qq, best[1]),
+                        torch.where(m, s, best[2])]
+        u = (best[1] + 8).to(torch.uint8)
+        q[r0:r0 + chunk] = (u[..., :group // 2] | (u[..., group // 2:] << 4)).view(-1, k // 2)
+        sc[r0:r0 + chunk] = best[2].view(-1, k // group).half()
+    return q, sc
+
+
+def _qwen4_exp_i4_logits(x: torch.Tensor, w4: torch.Tensor, s4: torch.Tensor) -> torch.Tensor:
+    shape = x.shape
+    x = x.reshape(-1, shape[-1])
+    if x.stride(1) != 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = w4.shape[0]
+    y = torch.empty((M, N), dtype=x.dtype, device=x.device)
+    bn, warps, stages, gpi = _I4_CFG
+    # Up to _W8_MAX_M rows per launch; larger batches (rare for logits) take one launch per chunk.
+    for m0 in range(0, M, _W8_MAX_M):
+        _i4_logits_kernel[(triton.cdiv(N, bn),)](
+            x[m0:], w4, s4, y[m0:], min(_W8_MAX_M, M - m0), N, x.stride(0), y.stride(0), K=K,
+            G=_I4_GROUP, GPI=gpi, BLOCK_M=_W8_MAX_M, BLOCK_N=bn, num_warps=warps, num_stages=stages)
+    return y.reshape(*shape[:-1], N)
+
+
+def _qwen4_exp_i4_logits_fake(x: torch.Tensor, w4: torch.Tensor, s4: torch.Tensor) -> torch.Tensor:
+    return x.new_empty((*x.shape[:-1], w4.shape[0]))
+
+
+direct_register_custom_op(
+    op_name="qwen4_exp_i4_logits",
+    op_func=_qwen4_exp_i4_logits,
+    mutates_args=[],
+    fake_impl=_qwen4_exp_i4_logits_fake,
+)
+
+
+class Qwen4ExpInt4EmbeddingMethod(UnquantizedEmbeddingMethod):
+    """INT4 rows for the lm_head logits GEMM; the BF16 table stays (embedding / draft head)."""
+
+    def process_weights_after_loading(self, layer: nn.Module) -> None:
+        super().process_weights_after_loading(layer)
+        layer.i4_weight, layer.i4_scale = quantize_rows_int4(layer.weight.data)
+
+    def apply(
+        self,
+        layer: nn.Module,
+        x: torch.Tensor,
+        bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        y = torch.ops.vllm.qwen4_exp_i4_logits(x, layer.i4_weight, layer.i4_scale)
+        return y if bias is None else y + bias
+
+
+def _patch_hc_down() -> None:
+    """Route converted HC down+inject projections to the FP8 GEMM with the SiLU(x / hc) epilogue."""
+    from vllm.models.qwen4_exp.nvidia import hyperconnection as hcm
+
+    cls = hcm.GatedResidual
+    if getattr(cls, "_w8_patched", False):
+        return
+    orig = cls._down_and_inject
+
+    def _down_and_inject(self, xn):
+        lin = getattr(self, "input_mix_weight_down_block_inject", None)
+        if not self.use_combine or lin is None or not hasattr(lin, "w8_weight"):
+            return orig(self, xn)
+        r, hc = self.hc_lowrank, self.hc_count
+        y = w8a16_linear(lin, xn, r, 1.0 / hc)
+        return y[:, :r], y[:, r:r + hc]
+
+    cls._down_and_inject = _down_and_inject
+    cls._w8_patched = True
+
+
+def _is_packed_row_major(tensor: torch.Tensor) -> bool:
+    return tensor.dim() == 2 and tensor.stride() == (tensor.shape[1], 1)
+
+
+def _runtime_ok(
+    x: torch.Tensor, weight: torch.Tensor, config: SkinnyGemmConfig
+) -> bool:
+    return (
+        not envs.VLLM_BATCH_INVARIANT
+        and x.dim() == 2
+        and row_stride_ok(x, config)
+        and _is_packed_row_major(weight)
+        and x.dtype == torch.bfloat16
+        and weight.dtype == torch.bfloat16
+        and x.is_cuda
+        and weight.is_cuda
+        and x.device == weight.device
+        and x.shape[1] == weight.shape[1]
+    )
+
+
+class _Qwen4ExpLowLatencyApply:
+    def apply(
+        self,
+        layer: nn.Module,
+        x: torch.Tensor,
+        bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if bias is None and not envs.VLLM_BATCH_INVARIANT:
+            return torch.ops.vllm.qwen4_exp_low_latency_gemm(x, layer.weight)
+        return super().apply(layer, x, bias)  # type: ignore[misc]
+
+
+class Qwen4ExpLowLatencyLinearMethod(_Qwen4ExpLowLatencyApply, UnquantizedLinearMethod):
+    pass
+
+
+class Qwen4ExpLowLatencyEmbeddingMethod(
+    _Qwen4ExpLowLatencyApply, UnquantizedEmbeddingMethod
+):
+    pass
+
+
+def _qwen4_exp_low_latency_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    plans = QWEN4_EXP_GEMM_PLANS_BY_CAPABILITY.get(
+        current_platform.get_device_capability(), {}
+    )
+    plan = plans.get((weight.shape[0], weight.shape[1]))
+    config = None if plan is None else plan.get(x.shape[0])
+    if (
+        config is not None
+        and _runtime_ok(x, weight, config)
+        and shape_dynamic_skinny_gemm.is_available()
+    ):
+        return shape_dynamic_skinny_gemm(x, weight, config)
+    return torch.nn.functional.linear(x, weight)
+
+
+def _qwen4_exp_low_latency_gemm_fake(
+    x: torch.Tensor, weight: torch.Tensor
+) -> torch.Tensor:
+    return x.new_empty((*x.shape[:-1], weight.shape[0]))
+
+
+direct_register_custom_op(
+    op_name="qwen4_exp_low_latency_gemm",
+    op_func=_qwen4_exp_low_latency_gemm,
+    fake_impl=_qwen4_exp_low_latency_gemm_fake,
+)
+
+
+def enable_qwen4_exp_low_latency_gemm(
+    module: nn.Module,
+    dtype: torch.dtype,
+) -> None:
+    plans = QWEN4_EXP_GEMM_PLANS_BY_CAPABILITY.get(
+        current_platform.get_device_capability(), {}
+    )
+    if dtype != torch.bfloat16 or not plans:
+        return
+    if not shape_dynamic_skinny_gemm.is_available():
+        return
+
+    if _W8_SHAPES:
+        _patch_hc_down()
+    owned: set[nn.Module] = set()
+    if os.environ.get("QWEN4_EXP_HC_FUSED", "0") == "1":
+        # The fused HC path keeps its own FP8 copies; leave the HC linears' BF16 weights in place
+        # for the stock path at larger token counts.
+        from vllm.models.qwen4_exp.nvidia import hc_fused
+
+        owned = hc_fused.enable(module)
+    if os.environ.get("QWEN4_EXP_MOE_ROUTE", "0") == "1":
+        # Fused router GEMM + top-k + Marlin alignment for decode; the gates keep their stock
+        # forward for larger token counts, so the skinny-GEMM selection below leaves them alone.
+        from vllm.models.qwen4_exp.nvidia import moe_route
+
+        owned = owned | moe_route.enable(module)
+    if os.environ.get("QWEN4_EXP_SE_TAIL", "0") == "1":
+        # Shared-expert tail (SiluAndMul, FP8 down, expert gate) in one launch for decode; it reads the
+        # FP8 down weights this function assigns below, so the down projection must stay W8A16.
+        from vllm.models.qwen4_exp.nvidia import se_tail
+
+        owned = owned | se_tail.enable(module)
+    if os.environ.get("QWEN4_EXP_L2PF", "0") == "1":
+        # Side-stream L2 prefetch of upcoming decode weights (l2_prefetch.py); it only adds forward hooks and
+        # reads the FP8 copies built after loading, so it owns no linears.
+        from vllm.models.qwen4_exp.nvidia import l2_prefetch
+
+        l2_prefetch.enable(module)
+    if os.environ.get("QWEN4_EXP_QSA_TOPK", "0") == "1":
+        # Cluster top-512 for the QSA decode rows (qsa_topk.py) in place of persistent_topk; it patches the
+        # indexer's top-k dispatch and owns no linears.
+        from vllm.models.qwen4_exp.nvidia import qsa_topk
+
+        qsa_topk.enable()
+    warmup_configs: set[SkinnyGemmConfig] = set()
+    for child in module.modules():
+        if child in owned:
+            continue
+        is_linear = (
+            isinstance(child, LinearBase)
+            and type(child.quant_method) is UnquantizedLinearMethod
+        )
+        is_head = (
+            isinstance(child, ParallelLMHead)
+            and type(child.quant_method) is UnquantizedEmbeddingMethod
+        )
+        if not (is_linear or is_head):
+            continue
+        weight = getattr(child, "weight", None)
+        if weight is None or weight.dim() != 2:
+            continue
+        if __import__("os").environ.get("QWEN4_EXP_LOG_SHAPES"):
+            print(f"QWEN4_EXP_SHAPE {type(child).__name__} {tuple(weight.shape)} "
+                  f"in_plan={(weight.shape[0], weight.shape[1]) in plans}", flush=True)
+        if is_head and _I4_CFG and weight.shape[1] % (_I4_GROUP * _I4_CFG[3]) == 0:
+            child.quant_method = Qwen4ExpInt4EmbeddingMethod()
+            print(f"QWEN4_EXP_LMHEAD_INT4 {type(child).__name__} {tuple(weight.shape)} group "
+                  f"{_I4_GROUP} cfg {_I4_CFG}", flush=True)
+            continue
+        if (weight.shape[0], weight.shape[1]) in _W8_SHAPES:
+            child.quant_method = (Qwen4ExpW8A16LinearMethod() if is_linear
+                                  else Qwen4ExpW8A16EmbeddingMethod())
+            n_w8 = getattr(enable_qwen4_exp_low_latency_gemm, "n_w8", 0) + 1
+            enable_qwen4_exp_low_latency_gemm.n_w8 = n_w8
+            if n_w8 in (1, 10, 50, 100):
+                print(f"QWEN4_EXP_W8A16 converted {n_w8} linears (last {type(child).__name__} "
+                      f"{tuple(weight.shape)})", flush=True)
+            continue
+        plan = plans.get((weight.shape[0], weight.shape[1]))
+        if plan is None:
+            continue
+        if is_linear:
+            child.quant_method = Qwen4ExpLowLatencyLinearMethod()
+        else:
+            child.quant_method = Qwen4ExpLowLatencyEmbeddingMethod()
+        warmup_configs.update(plan.values())
+
+    if warmup_configs:
+        shape_dynamic_skinny_gemm.request_warmup_configs(dtype, warmup_configs)

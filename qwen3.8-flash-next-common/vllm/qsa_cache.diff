@@ -1,0 +1,25 @@
+--- a/vllm/models/qwen4_exp/common/qsa_cache.py
++++ b/vllm/models/qwen4_exp/common/qsa_cache.py
+@@ -1,5 +1,11 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++# SPDX-FileCopyrightText: Copyright 2026 Percivio Ltd (modifications)
++#
++# Modified by Percivio Ltd in October 2026: widens the QSA compressor ring, when needed, to the next whole-group size
++# that divides the attention block size, so that speculative tokens fit.
++# Based on vllm/models/qwen4_exp/common/qsa_cache.py at vLLM commit
++# c50aca14416ef29f6ed0ed256302f30646726dcd; qsa_cache.diff holds the full change.
+ """Paged side-cache ownership and metadata for Qwen4Exp QSA.
+ 
+ Each QSA layer keeps a fixed circular buffer of raw index keys (the
+@@ -847,6 +853,10 @@
+         # overwrite a committed key the next step needs to close the group.
+         span = self.compress_ratio + vllm_config.num_speculative_tokens
+         capacity = round_up(span, self.compress_ratio)
++        # A wider ring is safe; widen it to the next whole-group size that divides the
++        # attention block size (e.g. 16 for 1616-token blocks and 5..12 draft tokens).
++        while self.cache_config.block_size % capacity and capacity < self.cache_config.block_size:
++            capacity += self.compress_ratio
+         assert self.cache_config.block_size % capacity == 0, (
+             f"QSA ring capacity {capacity} must divide the attention block "
+             f"size {self.cache_config.block_size}"

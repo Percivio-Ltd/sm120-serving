@@ -1,0 +1,149 @@
+--- a/vllm/v1/kv_offload/cpu/gpu_worker.py
++++ b/vllm/v1/kv_offload/cpu/gpu_worker.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import fcntl
+ import functools
+ import time
+ from collections import deque
+@@ -196,10 +197,55 @@
+ 
+ # Bound registration size to avoid driver limits on large host allocations.
+ MAX_HOST_REGISTER_CHUNK_BYTES = 64 * 1024**3
++# Percivio (not upstream): attempts per chunk before the region
++# stays pageable, and the pause before each retry.
++HOST_REGISTER_ATTEMPTS = 3
++HOST_REGISTER_RETRY_PAUSE_S = 2.0
++# Host-wide /proc/vmstat counters logged around each attempt: page migration,
++# compaction, NUMA balancing and swap, the activity that can cut a pin short.
++_PIN_VMSTAT_PATH = "/proc/vmstat"
++_PIN_VMSTAT_KEYS = (
++    "pgmigrate_success",
++    "pgmigrate_fail",
++    "compact_stall",
++    "compact_fail",
++    "numa_hint_faults",
++    "numa_pages_migrated",
++    "pswpin",
++    "pswpout",
++)
+ 
+ 
++def _pin_vmstat() -> dict[str, int]:
++    """The _PIN_VMSTAT_KEYS counters, or {} when /proc/vmstat is unreadable."""
++    try:
++        with open(_PIN_VMSTAT_PATH, "rb") as f:
++            lines = f.read().split(b"\n")
++    except OSError:
++        return {}
++    fields = {}
++    for line in lines:
++        parts = line.split()
++        if len(parts) == 2:
++            fields[parts[0].decode("ascii", "replace")] = parts[1]
++    return {k: int(fields[k]) for k in _PIN_VMSTAT_KEYS if k in fields}
++
++
++def _pin_vmstat_delta(before: dict[str, int], after: dict[str, int]) -> str:
++    keys = [k for k in _PIN_VMSTAT_KEYS if k in before and k in after]
++    if not keys:
++        return "vmstat unread"
++    return "vmstat " + " ".join("%s+%d" % (k, after[k] - before[k]) for k in keys)
++
++
+ def pin_mmap_region(region: SharedOffloadRegion) -> None:
+-    """Register row-aligned chunks, rolling back on failure."""
++    """Register row-aligned chunks, rolling back on failure.
++
++    Percivio: the workers that share the region register it one at a time,
++    under an exclusive flock on the region's file (each worker opened the file
++    itself, so the locks exclude each other, and a worker that dies drops its
++    lock). A failed chunk is retried; each attempt and the outcome log at INFO.
++    """
+     rank = region.rank
+     base_ptr = region._base.data_ptr()
+     total_size = region.total_size_bytes
+@@ -209,29 +255,65 @@
+     rows_per_chunk = max(MAX_HOST_REGISTER_CHUNK_BYTES // region._row_stride, 1)
+     chunk_size = rows_per_chunk * region._row_stride
+ 
+-    # Register, drain and roll back through the same helper, so a failed
+-    # chunk leaves neither a pending error nor a partly pinned region.
+-    addresses: list[int] = []
+-    for offset in range(0, total_size, chunk_size):
+-        address = base_ptr + offset
+-        size = min(chunk_size, total_size - offset)
+-        if host_register(address, size):
+-            addresses.append(address)
+-            continue
+-        logger.warning(
+-            "host_register failed for rank=%d at %.2f of %.2f GB; "
+-            "the offload region stays pageable",
++    fd = getattr(region, "fd", None)
++    t_lock = time.monotonic()
++    if fd is not None:
++        fcntl.flock(fd, fcntl.LOCK_EX)
++    try:
++        logger.info(
++            "KVPIN rank=%s: registration lock %s after %.2f s; %.2f GB in "
++            "chunks of %.2f GB",
+             rank,
+-            offset / 1e9,
++            "held" if fd is not None else "absent (no region fd)",
++            time.monotonic() - t_lock,
+             total_size / 1e9,
++            chunk_size / 1e9,
+         )
+-        for registered in reversed(addresses):
+-            host_unregister(registered)
+-        return
++        # Register, drain and roll back through the same helper, so a failed
++        # chunk leaves neither a pending error nor a partly pinned region.
++        addresses: list[int] = []
++        for offset in range(0, total_size, chunk_size):
++            address = base_ptr + offset
++            size = min(chunk_size, total_size - offset)
++            for attempt in range(1, HOST_REGISTER_ATTEMPTS + 1):
++                if attempt > 1:
++                    time.sleep(HOST_REGISTER_RETRY_PAUSE_S)
++                before = _pin_vmstat()
++                t0 = time.monotonic()
++                ok = host_register(address, size)
++                logger.info(
++                    "KVPIN rank=%s chunk at %.2f GB (%.2f GB) attempt %d of %d: "
++                    "%s in %.2f s; %s",
++                    rank,
++                    offset / 1e9,
++                    size / 1e9,
++                    attempt,
++                    HOST_REGISTER_ATTEMPTS,
++                    "registered" if ok else "failed",
++                    time.monotonic() - t0,
++                    _pin_vmstat_delta(before, _pin_vmstat()),
++                )
++                if ok:
++                    break
++            else:
++                logger.warning(
++                    "host_register failed for rank=%d at %.2f of %.2f GB; "
++                    "the offload region stays pageable",
++                    rank,
++                    offset / 1e9,
++                    total_size / 1e9,
++                )
++                for registered in reversed(addresses):
++                    host_unregister(registered)
++                return
++            addresses.append(address)
++    finally:
++        if fd is not None:
++            fcntl.flock(fd, fcntl.LOCK_UN)
+ 
+     region.pinned_addresses.extend(addresses)
+     region.is_pinned = True
+-    logger.debug(
++    logger.info(
+         "Host-registered mmap region rank=%d %.2f GB in %d chunk(s)",
+         rank,
+         total_size / 1e9,

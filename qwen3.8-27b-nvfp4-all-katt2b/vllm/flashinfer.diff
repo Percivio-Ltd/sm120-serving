@@ -1,0 +1,137 @@
+--- a/vllm/v1/attention/backends/flashinfer.py
++++ b/vllm/v1/attention/backends/flashinfer.py
+@@ -1,5 +1,11 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++# SPDX-FileCopyrightText: Copyright 2026 Percivio Ltd (modifications)
++#
++# Modified by Percivio Ltd in October 2026: routes eligible prefills with an FP8 KV cache through the katt2b
++# staged BF16 path (katt/staged_prefill.py) when VLLM_SM120_FP8KV_PREFILL=1.
++# Based on vllm/v1/attention/backends/flashinfer.py at vLLM commit
++# c50aca14416ef29f6ed0ed256302f30646726dcd; flashinfer.diff holds the full change.
+ """Attention layer with FlashInfer."""
+ 
+ from dataclasses import dataclass, replace
+@@ -104,6 +110,20 @@
+ 
+ logger = init_logger(__name__)
+ 
++
++def _katt2_module():
++    import importlib.util
++    import os
++    import sys
++    name = "_vllm_sm120_katt2_staged_prefill"
++    if name not in sys.modules:
++        path = os.path.join(os.environ.get("VLLM_SM120_KATT_DIR", "/kern/katt"), "staged_prefill.py")
++        spec = importlib.util.spec_from_file_location(name, path)
++        module = importlib.util.module_from_spec(spec)
++        sys.modules[name] = module
++        spec.loader.exec_module(module)
++    return sys.modules[name]
++
+ trtllm_workspace_buffer = None
+ 
+ 
+@@ -966,6 +986,22 @@
+         self.q_data_type_prefill = self.get_q_data_type(is_prefill=True)
+         self.q_data_type_decode = self.get_q_data_type(is_prefill=False)
+ 
++        import os
++        source_layout = get_flashinfer_layout_string(self.kv_cache_layout)
++        reasons = []
++        if os.environ.get("VLLM_SM120_FP8KV_PREFILL") != "1": reasons.append("env")
++        if source_layout not in ("NHD", "HND"): reasons.append("layout=" + source_layout)
++        if self.cache_dtype not in ("fp8", "fp8_e4m3"): reasons.append("kv_dtype=" + str(self.cache_dtype))
++        if self.q_data_type_prefill != torch.bfloat16: reasons.append("q_dtype=" + str(self.q_data_type_prefill))
++        if self.head_dim != 256: reasons.append("head_dim=" + str(self.head_dim))
++        if self.page_size not in (16,32,64): reasons.append("page_size=" + str(self.page_size))
++        if self.num_qo_heads != 24 or self.num_kv_heads != 4: reasons.append("heads")
++        if not current_platform.is_device_capability_family(120): reasons.append("arch")
++        if reasons:
++            logger.info_once("KATT2_DISABLED reason=%s", ",".join(reasons))
++        else:
++            logger.info_once("KATT2_READY input_layout=%s dtype=bf16/e4m3 head_dim=256 page_size=%d reservation_phase=model_load", source_layout,self.page_size)
++
+         # Prefer TRTLLM/XQA for decoding whenever supported. The decode kernel
+         # must be selected statically for FULL cudagraph capture.
+         # XQA reads an NVFP4 cache only on SM12x; SM90 decodes it with fa2.
+@@ -1229,6 +1265,16 @@
+         return max_decode_query_len(vllm_config)
+ 
+     def _get_workspace_buffer(self):
++        import os
++        if (
++            os.environ.get("VLLM_SM120_FP8KV_PREFILL") == "1"
++            and current_platform.is_device_capability_family(120)
++            and self.cache_dtype in ("fp8", "fp8_e4m3")
++            and self.num_qo_heads == 24 and self.num_kv_heads == 4
++            and self.head_dim == 256 and self.model_config.dtype == torch.bfloat16
++        ):
++            self._workspace_buffer = _katt2_module().workspace_for_model(self.vllm_config)
++            return self._workspace_buffer
+         if self._workspace_buffer is None:
+             buffer_size = envs.VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE
+             if envs.VLLM_BATCH_INVARIANT:
+@@ -1424,11 +1470,36 @@
+                     # NVFP4 KV cache requires the trtllm-gen backend inside
+                     # the wrapper on SM100; SM8x, SM90 and SM12x read it with fa2.
+                     backend = "trtllm-gen" if self.nvfp4_trtllm else "auto"
+-                    self._prefill_wrapper = BatchPrefillWithPagedKVCacheWrapper(
+-                        self._get_workspace_buffer(),
+-                        get_flashinfer_layout_string(self.kv_cache_layout),
+-                        backend=backend,
+-                    )
++                    import os
++                    if (
++                        os.environ.get("VLLM_SM120_FP8KV_PREFILL") == "1"
++                        and current_platform.is_device_capability_family(120)
++                        and self.cache_dtype in ("fp8", "fp8_e4m3")
++                        and self.num_qo_heads == 24 and self.num_kv_heads == 4
++                        and self.head_dim == 256 and self.page_size in (16,32,64)
++                        and self.model_config.dtype == torch.bfloat16
++                        and self.window_left == -1 and not self.logits_soft_cap
++                    ):
++                        self._prefill_wrapper = _katt2_module().make_wrapper(
++                            self._get_workspace_buffer(),
++                            get_flashinfer_layout_string(self.kv_cache_layout), backend,
++                            self.max_num_reqs * cdiv(self.model_config.max_model_len, 64)*4,
++                        )
++                    else:
++                        if os.environ.get("VLLM_SM120_FP8KV_PREFILL") == "1" and self.page_size not in (16,32,64):
++                            logger.info_once("KATT2_DISABLED reason=page_size page_size=%d", self.page_size)
++                        logger.info_once(
++                            "KATT2_DISABLED reason=wrapper_selection page_size=%d layout=%s q_dtype=%s kv_dtype=%s head_dim=%d heads=%d/%d window_left=%d logits_soft_cap=%s env=%s",
++                            self.page_size,get_flashinfer_layout_string(self.kv_cache_layout),
++                            self.model_config.dtype,self.cache_dtype,self.head_dim,
++                            self.num_qo_heads,self.num_kv_heads,self.window_left,self.logits_soft_cap,
++                            os.environ.get("VLLM_SM120_FP8KV_PREFILL","0"),
++                        )
++                        self._prefill_wrapper = BatchPrefillWithPagedKVCacheWrapper(
++                            self._get_workspace_buffer(),
++                            get_flashinfer_layout_string(self.kv_cache_layout),
++                            backend=backend,
++                        )
+         assert self._prefill_wrapper is not None
+         return self._prefill_wrapper
+ 
+@@ -2020,6 +2091,19 @@
+         self.nvfp4_trtllm = self.is_kvcache_nvfp4 and not self.nvfp4_fa2
+         self.kv_cache_dtype = "nvfp4" if self.is_kvcache_nvfp4 else kv_cache_dtype
+         self.fp4_data_dim = head_size // 2 if self.is_kvcache_nvfp4 else 0
++
++        # Allocate once during model construction: GPUModelRunner's model-load
++        # memory measurement includes the persistent scratch before KV profiling.
++        import os
++        cfg = get_current_vllm_config_or_none()
++        if (
++            os.environ.get("VLLM_SM120_FP8KV_PREFILL") == "1"
++            and current_platform.is_device_capability_family(120)
++            and num_heads == 24 and num_kv_heads == 4 and head_size == 256
++            and kv_cache_dtype in ("fp8", "fp8_e4m3")
++            and cfg is not None and cfg.model_config.dtype == torch.bfloat16
++        ):
++            _katt2_module().reserve_from_model(cfg)
+         self.logits_soft_cap = logits_soft_cap
+         self.kv_sharing_target_layer_name = kv_sharing_target_layer_name
+ 

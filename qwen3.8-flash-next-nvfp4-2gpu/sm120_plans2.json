@@ -1,0 +1,2256 @@
+{
+ "8192x2560@1": {
+  "n": 8192,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 31.53,
+  "best_us": 26.35,
+  "gbps": 1592,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "8192x2560@2": {
+  "n": 8192,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 31.55,
+  "best_us": 26.5,
+  "gbps": 1582,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "8192x2560@3": {
+  "n": 8192,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 31.6,
+  "best_us": 26.55,
+  "gbps": 1580,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "8192x2560@4": {
+  "n": 8192,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 31.53,
+  "best_us": 26.53,
+  "gbps": 1581,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "8192x2560@5": {
+  "n": 8192,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 31.54,
+  "best_us": 26.4,
+  "gbps": 1589,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "8192x2560@6": {
+  "n": 8192,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 31.77,
+  "best_us": 26.59,
+  "gbps": 1577,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "8192x2560@8": {
+  "n": 8192,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 31.53,
+  "best_us": 27.5,
+  "gbps": 1525,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "7296x2560@1": {
+  "n": 7296,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 28.68,
+  "best_us": 23.62,
+  "gbps": 1582,
+  "tried": 192,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "7296x2560@2": {
+  "n": 7296,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 28.53,
+  "best_us": 23.66,
+  "gbps": 1579,
+  "tried": 192,
+  "config": {
+   "num_rows": 2,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "7296x2560@3": {
+  "n": 7296,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 28.66,
+  "best_us": 23.76,
+  "gbps": 1572,
+  "tried": 192,
+  "config": {
+   "num_rows": 3,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "7296x2560@4": {
+  "n": 7296,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 28.71,
+  "best_us": 23.83,
+  "gbps": 1568,
+  "tried": 192,
+  "config": {
+   "num_rows": 4,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "7296x2560@5": {
+  "n": 7296,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 28.59,
+  "best_us": 23.67,
+  "gbps": 1578,
+  "tried": 192,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "7296x2560@6": {
+  "n": 7296,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 28.62,
+  "best_us": 24.26,
+  "gbps": 1540,
+  "tried": 192,
+  "config": {
+   "num_rows": 6,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "7296x2560@8": {
+  "n": 7296,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 28.68,
+  "best_us": 24.3,
+  "gbps": 1537,
+  "tried": 192,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "6656x2560@1": {
+  "n": 6656,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 26.74,
+  "best_us": 21.68,
+  "gbps": 1572,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "6656x2560@2": {
+  "n": 6656,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 26.7,
+  "best_us": 21.78,
+  "gbps": 1565,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "6656x2560@3": {
+  "n": 6656,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 26.67,
+  "best_us": 21.8,
+  "gbps": 1563,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "6656x2560@4": {
+  "n": 6656,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 26.7,
+  "best_us": 21.81,
+  "gbps": 1563,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "6656x2560@5": {
+  "n": 6656,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 26.77,
+  "best_us": 21.7,
+  "gbps": 1571,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "6656x2560@6": {
+  "n": 6656,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 26.67,
+  "best_us": 22.16,
+  "gbps": 1538,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "6656x2560@8": {
+  "n": 6656,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 26.78,
+  "best_us": 22.85,
+  "gbps": 1492,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "124160x2560@1": {
+  "n": 124160,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 446.54,
+  "best_us": 396.16,
+  "gbps": 1605,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "124160x2560@2": {
+  "n": 124160,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 424.83,
+  "best_us": 396.26,
+  "gbps": 1604,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "124160x2560@3": {
+  "n": 124160,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 425.63,
+  "best_us": 396.64,
+  "gbps": 1603,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "124160x2560@4": {
+  "n": 124160,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 425.95,
+  "best_us": 396.51,
+  "gbps": 1603,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "124160x2560@5": {
+  "n": 124160,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 426.94,
+  "best_us": 396.3,
+  "gbps": 1604,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "124160x2560@6": {
+  "n": 124160,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 427.17,
+  "best_us": 397.41,
+  "gbps": 1600,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "124160x2560@8": {
+  "n": 124160,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 428.85,
+  "best_us": 398.7,
+  "gbps": 1594,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "2560x3072@1": {
+  "n": 2560,
+  "k": 3072,
+  "m": 1,
+  "torch_us": 13.31,
+  "best_us": 10.82,
+  "gbps": 1454,
+  "tried": 132,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 3072
+  }
+ },
+ "2560x3072@2": {
+  "n": 2560,
+  "k": 3072,
+  "m": 2,
+  "torch_us": 14.24,
+  "best_us": 10.94,
+  "gbps": 1437,
+  "tried": 132,
+  "config": {
+   "num_rows": 2,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 3072
+  }
+ },
+ "2560x3072@3": {
+  "n": 2560,
+  "k": 3072,
+  "m": 3,
+  "torch_us": 14.25,
+  "best_us": 11.0,
+  "gbps": 1429,
+  "tried": 132,
+  "config": {
+   "num_rows": 3,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 3072
+  }
+ },
+ "2560x3072@4": {
+  "n": 2560,
+  "k": 3072,
+  "m": 4,
+  "torch_us": 14.28,
+  "best_us": 11.01,
+  "gbps": 1429,
+  "tried": 132,
+  "config": {
+   "num_rows": 4,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 3072
+  }
+ },
+ "2560x3072@5": {
+  "n": 2560,
+  "k": 3072,
+  "m": 5,
+  "torch_us": 14.33,
+  "best_us": 11.22,
+  "gbps": 1402,
+  "tried": 132,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 3072
+  }
+ },
+ "2560x3072@6": {
+  "n": 2560,
+  "k": 3072,
+  "m": 6,
+  "torch_us": 14.34,
+  "best_us": 11.6,
+  "gbps": 1356,
+  "tried": 132,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 3072
+  }
+ },
+ "2560x3072@8": {
+  "n": 2560,
+  "k": 3072,
+  "m": 8,
+  "torch_us": 14.46,
+  "best_us": 11.4,
+  "gbps": 1380,
+  "tried": 132,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 3072
+  }
+ },
+ "48x2560@1": {
+  "n": 48,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 2.51,
+  "best_us": 1.01,
+  "gbps": 244,
+  "tried": 192,
+  "config": {
+   "num_rows": 1,
+   "block_size": 256,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "48x2560@2": {
+  "n": 48,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 10.79,
+  "best_us": 1.14,
+  "gbps": 217,
+  "tried": 192,
+  "config": {
+   "num_rows": 2,
+   "block_size": 128,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "48x2560@3": {
+  "n": 48,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 10.79,
+  "best_us": 1.17,
+  "gbps": 210,
+  "tried": 192,
+  "config": {
+   "num_rows": 3,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 2560
+  }
+ },
+ "48x2560@4": {
+  "n": 48,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 10.78,
+  "best_us": 1.27,
+  "gbps": 194,
+  "tried": 192,
+  "config": {
+   "num_rows": 4,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 2560
+  }
+ },
+ "48x2560@5": {
+  "n": 48,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 10.79,
+  "best_us": 1.4,
+  "gbps": 176,
+  "tried": 192,
+  "config": {
+   "num_rows": 5,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "48x2560@6": {
+  "n": 48,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 10.82,
+  "best_us": 1.46,
+  "gbps": 168,
+  "tried": 192,
+  "config": {
+   "num_rows": 6,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "48x2560@8": {
+  "n": 48,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 10.88,
+  "best_us": 1.67,
+  "gbps": 147,
+  "tried": 192,
+  "config": {
+   "num_rows": 8,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "512x2560@1": {
+  "n": 512,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 4.16,
+  "best_us": 2.25,
+  "gbps": 1166,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "512x2560@2": {
+  "n": 512,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 5.65,
+  "best_us": 2.39,
+  "gbps": 1099,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "512x2560@3": {
+  "n": 512,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 5.73,
+  "best_us": 2.8,
+  "gbps": 937,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "512x2560@4": {
+  "n": 512,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 5.72,
+  "best_us": 2.77,
+  "gbps": 947,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "512x2560@5": {
+  "n": 512,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 5.74,
+  "best_us": 2.96,
+  "gbps": 886,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "512x2560@6": {
+  "n": 512,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 5.72,
+  "best_us": 2.98,
+  "gbps": 881,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "512x2560@8": {
+  "n": 512,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 5.76,
+  "best_us": 3.84,
+  "gbps": 683,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "640x2560@1": {
+  "n": 640,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 4.67,
+  "best_us": 2.52,
+  "gbps": 1301,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "640x2560@2": {
+  "n": 640,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 5.74,
+  "best_us": 2.6,
+  "gbps": 1262,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "640x2560@3": {
+  "n": 640,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 5.77,
+  "best_us": 2.78,
+  "gbps": 1178,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "640x2560@4": {
+  "n": 640,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 5.75,
+  "best_us": 3.15,
+  "gbps": 1040,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "640x2560@5": {
+  "n": 640,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 5.78,
+  "best_us": 3.23,
+  "gbps": 1016,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "640x2560@6": {
+  "n": 640,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 5.81,
+  "best_us": 3.38,
+  "gbps": 970,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "640x2560@8": {
+  "n": 640,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 5.91,
+  "best_us": 4.25,
+  "gbps": 770,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 2560
+  }
+ },
+ "1x2560@1": {
+  "n": 1,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 2.53,
+  "best_us": 0.85,
+  "gbps": 6,
+  "tried": 48,
+  "config": {
+   "num_rows": 1,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "1x2560@2": {
+  "n": 1,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 2.29,
+  "best_us": 0.95,
+  "gbps": 5,
+  "tried": 48,
+  "config": {
+   "num_rows": 2,
+   "block_size": 256,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "1x2560@3": {
+  "n": 1,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 2.29,
+  "best_us": 1.03,
+  "gbps": 5,
+  "tried": 48,
+  "config": {
+   "num_rows": 3,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "1x2560@4": {
+  "n": 1,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 2.47,
+  "best_us": 1.13,
+  "gbps": 5,
+  "tried": 48,
+  "config": {
+   "num_rows": 4,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "1x2560@5": {
+  "n": 1,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 2.41,
+  "best_us": 1.21,
+  "gbps": 4,
+  "tried": 48,
+  "config": {
+   "num_rows": 5,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "1x2560@6": {
+  "n": 1,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 2.81,
+  "best_us": 1.33,
+  "gbps": 4,
+  "tried": 48,
+  "config": {
+   "num_rows": 6,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "1x2560@8": {
+  "n": 1,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 2.39,
+  "best_us": 1.53,
+  "gbps": 3,
+  "tried": 48,
+  "config": {
+   "num_rows": 8,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "2560x320@1": {
+  "n": 2560,
+  "k": 320,
+  "m": 1,
+  "torch_us": 2.91,
+  "best_us": 1.72,
+  "gbps": 951,
+  "tried": 21,
+  "config": {
+   "num_rows": 1,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": null
+  }
+ },
+ "2560x320@2": {
+  "n": 2560,
+  "k": 320,
+  "m": 2,
+  "torch_us": 3.11,
+  "best_us": 2.16,
+  "gbps": 758,
+  "tried": 21,
+  "config": {
+   "num_rows": 2,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "2560x320@3": {
+  "n": 2560,
+  "k": 320,
+  "m": 3,
+  "torch_us": 3.1,
+  "best_us": 2.14,
+  "gbps": 765,
+  "tried": 21,
+  "config": {
+   "num_rows": 3,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "2560x320@4": {
+  "n": 2560,
+  "k": 320,
+  "m": 4,
+  "torch_us": 3.14,
+  "best_us": 2.31,
+  "gbps": 709,
+  "tried": 21,
+  "config": {
+   "num_rows": 4,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "2560x320@5": {
+  "n": 2560,
+  "k": 320,
+  "m": 5,
+  "torch_us": 3.17,
+  "best_us": 2.39,
+  "gbps": 686,
+  "tried": 21,
+  "config": {
+   "num_rows": 5,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "2560x320@6": {
+  "n": 2560,
+  "k": 320,
+  "m": 6,
+  "torch_us": 3.16,
+  "best_us": 2.58,
+  "gbps": 635,
+  "tried": 21,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "2560x320@8": {
+  "n": 2560,
+  "k": 320,
+  "m": 8,
+  "torch_us": 3.2,
+  "best_us": 2.91,
+  "gbps": 563,
+  "tried": 21,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 4,
+   "vector_width": 2,
+   "static_k": null
+  }
+ },
+ "10240x320@1": {
+  "n": 10240,
+  "k": 320,
+  "m": 1,
+  "torch_us": 6.52,
+  "best_us": 5.43,
+  "gbps": 1206,
+  "tried": 21,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "10240x320@2": {
+  "n": 10240,
+  "k": 320,
+  "m": 2,
+  "torch_us": 6.81,
+  "best_us": 5.56,
+  "gbps": 1178,
+  "tried": 21,
+  "config": {
+   "num_rows": 2,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "10240x320@3": {
+  "n": 10240,
+  "k": 320,
+  "m": 3,
+  "torch_us": 6.84,
+  "best_us": 5.69,
+  "gbps": 1151,
+  "tried": 21,
+  "config": {
+   "num_rows": 3,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "10240x320@4": {
+  "n": 10240,
+  "k": 320,
+  "m": 4,
+  "torch_us": 6.5,
+  "best_us": 5.73,
+  "gbps": 1145,
+  "tried": 21,
+  "config": {
+   "num_rows": 4,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "10240x320@5": {
+  "n": 10240,
+  "k": 320,
+  "m": 5,
+  "torch_us": 6.55,
+  "best_us": 5.85,
+  "gbps": 1121,
+  "tried": 21,
+  "config": {
+   "num_rows": 5,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "10240x320@6": {
+  "n": 10240,
+  "k": 320,
+  "m": 6,
+  "torch_us": 6.54,
+  "best_us": 6.11,
+  "gbps": 1072,
+  "tried": 21,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 320
+  }
+ },
+ "10240x320@8": {
+  "n": 10240,
+  "k": 320,
+  "m": 8,
+  "torch_us": 6.54,
+  "best_us": 6.54,
+  "gbps": 1002,
+  "tried": 21,
+  "config": null
+ },
+ "320x10240@1": {
+  "n": 320,
+  "k": 10240,
+  "m": 1,
+  "torch_us": 8.16,
+  "best_us": 4.91,
+  "gbps": 1334,
+  "tried": 180,
+  "config": {
+   "num_rows": 1,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "320x10240@2": {
+  "n": 320,
+  "k": 10240,
+  "m": 2,
+  "torch_us": 8.18,
+  "best_us": 5.18,
+  "gbps": 1264,
+  "tried": 180,
+  "config": {
+   "num_rows": 2,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "320x10240@3": {
+  "n": 320,
+  "k": 10240,
+  "m": 3,
+  "torch_us": 8.18,
+  "best_us": 5.35,
+  "gbps": 1225,
+  "tried": 180,
+  "config": {
+   "num_rows": 3,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "320x10240@4": {
+  "n": 320,
+  "k": 10240,
+  "m": 4,
+  "torch_us": 8.2,
+  "best_us": 5.71,
+  "gbps": 1147,
+  "tried": 180,
+  "config": {
+   "num_rows": 4,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "320x10240@5": {
+  "n": 320,
+  "k": 10240,
+  "m": 5,
+  "torch_us": 8.24,
+  "best_us": 6.02,
+  "gbps": 1088,
+  "tried": 180,
+  "config": {
+   "num_rows": 5,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "320x10240@6": {
+  "n": 320,
+  "k": 10240,
+  "m": 6,
+  "torch_us": 8.24,
+  "best_us": 6.34,
+  "gbps": 1033,
+  "tried": 180,
+  "config": {
+   "num_rows": 6,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "320x10240@8": {
+  "n": 320,
+  "k": 10240,
+  "m": 8,
+  "torch_us": 8.32,
+  "best_us": 6.69,
+  "gbps": 979,
+  "tried": 180,
+  "config": {
+   "num_rows": 8,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "2560x2560@1": {
+  "n": 2560,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 11.78,
+  "best_us": 9.27,
+  "gbps": 1414,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "2560x2560@2": {
+  "n": 2560,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 13.0,
+  "best_us": 9.34,
+  "gbps": 1404,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 64,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "2560x2560@3": {
+  "n": 2560,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 13.01,
+  "best_us": 9.38,
+  "gbps": 1398,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "2560x2560@4": {
+  "n": 2560,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 13.07,
+  "best_us": 9.52,
+  "gbps": 1376,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "2560x2560@5": {
+  "n": 2560,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 13.13,
+  "best_us": 9.38,
+  "gbps": 1397,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "2560x2560@6": {
+  "n": 2560,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 13.17,
+  "best_us": 9.57,
+  "gbps": 1370,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "2560x2560@8": {
+  "n": 2560,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 13.19,
+  "best_us": 10.2,
+  "gbps": 1285,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "5120x2560@1": {
+  "n": 5120,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 21.01,
+  "best_us": 16.98,
+  "gbps": 1543,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "5120x2560@2": {
+  "n": 5120,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 21.94,
+  "best_us": 17.11,
+  "gbps": 1532,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "5120x2560@3": {
+  "n": 5120,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 21.98,
+  "best_us": 17.17,
+  "gbps": 1527,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "5120x2560@4": {
+  "n": 5120,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 21.88,
+  "best_us": 17.21,
+  "gbps": 1523,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "5120x2560@5": {
+  "n": 5120,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 22.01,
+  "best_us": 17.09,
+  "gbps": 1534,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "5120x2560@6": {
+  "n": 5120,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 21.96,
+  "best_us": 17.66,
+  "gbps": 1485,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "5120x2560@8": {
+  "n": 5120,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 21.95,
+  "best_us": 17.91,
+  "gbps": 1464,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "2560x5120@1": {
+  "n": 2560,
+  "k": 5120,
+  "m": 1,
+  "torch_us": 21.68,
+  "best_us": 16.99,
+  "gbps": 1543,
+  "tried": 168,
+  "config": {
+   "num_rows": 1,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 5120
+  }
+ },
+ "2560x5120@2": {
+  "n": 2560,
+  "k": 5120,
+  "m": 2,
+  "torch_us": 21.36,
+  "best_us": 17.11,
+  "gbps": 1532,
+  "tried": 168,
+  "config": {
+   "num_rows": 2,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 5120
+  }
+ },
+ "2560x5120@3": {
+  "n": 2560,
+  "k": 5120,
+  "m": 3,
+  "torch_us": 21.37,
+  "best_us": 17.36,
+  "gbps": 1510,
+  "tried": 168,
+  "config": {
+   "num_rows": 3,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 5120
+  }
+ },
+ "2560x5120@4": {
+  "n": 2560,
+  "k": 5120,
+  "m": 4,
+  "torch_us": 21.46,
+  "best_us": 17.54,
+  "gbps": 1494,
+  "tried": 168,
+  "config": {
+   "num_rows": 4,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 5120
+  }
+ },
+ "2560x5120@5": {
+  "n": 2560,
+  "k": 5120,
+  "m": 5,
+  "torch_us": 21.51,
+  "best_us": 17.46,
+  "gbps": 1501,
+  "tried": 168,
+  "config": {
+   "num_rows": 5,
+   "block_size": 128,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 5120
+  }
+ },
+ "2560x5120@6": {
+  "n": 2560,
+  "k": 5120,
+  "m": 6,
+  "torch_us": 21.53,
+  "best_us": 17.74,
+  "gbps": 1478,
+  "tried": 168,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 5120
+  }
+ },
+ "2560x5120@8": {
+  "n": 2560,
+  "k": 5120,
+  "m": 8,
+  "torch_us": 21.67,
+  "best_us": 18.04,
+  "gbps": 1454,
+  "tried": 168,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 5120
+  }
+ },
+ "1280x2560@1": {
+  "n": 1280,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 7.79,
+  "best_us": 4.79,
+  "gbps": 1367,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 160,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "1280x2560@2": {
+  "n": 1280,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 7.89,
+  "best_us": 4.95,
+  "gbps": 1324,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 160,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "1280x2560@3": {
+  "n": 1280,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 7.92,
+  "best_us": 5.08,
+  "gbps": 1290,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "1280x2560@4": {
+  "n": 1280,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 7.99,
+  "best_us": 5.18,
+  "gbps": 1264,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "1280x2560@5": {
+  "n": 1280,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 8.0,
+  "best_us": 5.23,
+  "gbps": 1253,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "1280x2560@6": {
+  "n": 1280,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 8.04,
+  "best_us": 5.43,
+  "gbps": 1208,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 160,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "1280x2560@8": {
+  "n": 1280,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 8.12,
+  "best_us": 5.61,
+  "gbps": 1168,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "2560x640@1": {
+  "n": 2560,
+  "k": 640,
+  "m": 1,
+  "torch_us": 5.43,
+  "best_us": 2.61,
+  "gbps": 1255,
+  "tried": 57,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 640
+  }
+ },
+ "2560x640@2": {
+  "n": 2560,
+  "k": 640,
+  "m": 2,
+  "torch_us": 5.61,
+  "best_us": 2.81,
+  "gbps": 1168,
+  "tried": 57,
+  "config": {
+   "num_rows": 2,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 640
+  }
+ },
+ "2560x640@3": {
+  "n": 2560,
+  "k": 640,
+  "m": 3,
+  "torch_us": 5.61,
+  "best_us": 2.84,
+  "gbps": 1154,
+  "tried": 57,
+  "config": {
+   "num_rows": 3,
+   "block_size": 64,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 640
+  }
+ },
+ "2560x640@4": {
+  "n": 2560,
+  "k": 640,
+  "m": 4,
+  "torch_us": 5.6,
+  "best_us": 2.89,
+  "gbps": 1135,
+  "tried": 57,
+  "config": {
+   "num_rows": 4,
+   "block_size": 64,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 640
+  }
+ },
+ "2560x640@5": {
+  "n": 2560,
+  "k": 640,
+  "m": 5,
+  "torch_us": 5.63,
+  "best_us": 3.03,
+  "gbps": 1083,
+  "tried": 57,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 640
+  }
+ },
+ "2560x640@6": {
+  "n": 2560,
+  "k": 640,
+  "m": 6,
+  "torch_us": 5.66,
+  "best_us": 3.09,
+  "gbps": 1061,
+  "tried": 57,
+  "config": {
+   "num_rows": 6,
+   "block_size": 32,
+   "outputs_per_block": 2,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 640
+  }
+ },
+ "2560x640@8": {
+  "n": 2560,
+  "k": 640,
+  "m": 8,
+  "torch_us": 5.63,
+  "best_us": 3.62,
+  "gbps": 904,
+  "tried": 57,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 4,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 640
+  }
+ },
+ "336x10240@1": {
+  "n": 336,
+  "k": 10240,
+  "m": 1,
+  "torch_us": 8.65,
+  "best_us": 5.17,
+  "gbps": 1330,
+  "tried": 240,
+  "config": {
+   "num_rows": 1,
+   "block_size": 256,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 10240
+  }
+ },
+ "336x10240@2": {
+  "n": 336,
+  "k": 10240,
+  "m": 2,
+  "torch_us": 8.43,
+  "best_us": 5.19,
+  "gbps": 1325,
+  "tried": 240,
+  "config": {
+   "num_rows": 2,
+   "block_size": 160,
+   "outputs_per_block": 3,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "336x10240@3": {
+  "n": 336,
+  "k": 10240,
+  "m": 3,
+  "torch_us": 8.45,
+  "best_us": 5.43,
+  "gbps": 1268,
+  "tried": 240,
+  "config": {
+   "num_rows": 3,
+   "block_size": 160,
+   "outputs_per_block": 3,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "336x10240@4": {
+  "n": 336,
+  "k": 10240,
+  "m": 4,
+  "torch_us": 8.47,
+  "best_us": 5.56,
+  "gbps": 1237,
+  "tried": 240,
+  "config": {
+   "num_rows": 4,
+   "block_size": 160,
+   "outputs_per_block": 3,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "336x10240@5": {
+  "n": 336,
+  "k": 10240,
+  "m": 5,
+  "torch_us": 8.53,
+  "best_us": 5.8,
+  "gbps": 1187,
+  "tried": 240,
+  "config": {
+   "num_rows": 5,
+   "block_size": 160,
+   "outputs_per_block": 3,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "336x10240@6": {
+  "n": 336,
+  "k": 10240,
+  "m": 6,
+  "torch_us": 8.52,
+  "best_us": 6.52,
+  "gbps": 1055,
+  "tried": 240,
+  "config": {
+   "num_rows": 6,
+   "block_size": 128,
+   "outputs_per_block": 3,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "336x10240@8": {
+  "n": 336,
+  "k": 10240,
+  "m": 8,
+  "torch_us": 8.59,
+  "best_us": 6.85,
+  "gbps": 1004,
+  "tried": 240,
+  "config": {
+   "num_rows": 8,
+   "block_size": 160,
+   "outputs_per_block": 3,
+   "k_unroll": 1,
+   "vector_width": 8,
+   "static_k": 10240
+  }
+ },
+ "12800x2560@1": {
+  "n": 12800,
+  "k": 2560,
+  "m": 1,
+  "torch_us": 47.23,
+  "best_us": 40.2,
+  "gbps": 1630,
+  "tried": 144,
+  "config": {
+   "num_rows": 1,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "12800x2560@2": {
+  "n": 12800,
+  "k": 2560,
+  "m": 2,
+  "torch_us": 49.58,
+  "best_us": 40.36,
+  "gbps": 1624,
+  "tried": 144,
+  "config": {
+   "num_rows": 2,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "12800x2560@3": {
+  "n": 12800,
+  "k": 2560,
+  "m": 3,
+  "torch_us": 49.6,
+  "best_us": 40.59,
+  "gbps": 1614,
+  "tried": 144,
+  "config": {
+   "num_rows": 3,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ },
+ "12800x2560@4": {
+  "n": 12800,
+  "k": 2560,
+  "m": 4,
+  "torch_us": 49.49,
+  "best_us": 40.6,
+  "gbps": 1614,
+  "tried": 144,
+  "config": {
+   "num_rows": 4,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "12800x2560@5": {
+  "n": 12800,
+  "k": 2560,
+  "m": 5,
+  "torch_us": 49.63,
+  "best_us": 40.38,
+  "gbps": 1623,
+  "tried": 144,
+  "config": {
+   "num_rows": 5,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "12800x2560@6": {
+  "n": 12800,
+  "k": 2560,
+  "m": 6,
+  "torch_us": 49.76,
+  "best_us": 40.54,
+  "gbps": 1616,
+  "tried": 144,
+  "config": {
+   "num_rows": 6,
+   "block_size": 64,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 2,
+   "static_k": 2560
+  }
+ },
+ "12800x2560@8": {
+  "n": 12800,
+  "k": 2560,
+  "m": 8,
+  "torch_us": 49.63,
+  "best_us": 41.29,
+  "gbps": 1587,
+  "tried": 144,
+  "config": {
+   "num_rows": 8,
+   "block_size": 32,
+   "outputs_per_block": 1,
+   "k_unroll": 1,
+   "vector_width": 4,
+   "static_k": 2560
+  }
+ }
+}

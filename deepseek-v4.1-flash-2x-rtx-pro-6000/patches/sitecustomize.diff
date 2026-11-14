@@ -1,0 +1,133 @@
+--- a/recipe/patches/vllm/sitecustomize.py
++++ b/recipe/patches/vllm/sitecustomize.py
+@@ -1994,6 +1994,18 @@
+     if _o14.environ.get("DS41_ROWTOPK", "0") == "1":
+         import torch as _t14
+         _t14.ops.load_library(_o14.environ.get("DS41_ROWTOPK_SO", "/opt/recipe/kernels/build/rowtopk/rowtopk.so"))
++        # DS41_ROWTOPK_IMPL=rtx8|ixtk|ixrs picks the op (unset: rtx8, the recipe's kernel, behaviour unchanged);
++        # ixtk or ixrs loads DS41_IXTK_SO (ixrs: kernels/ixrs/ixrs.cu in sm120-serving; same schema and output bytes as rtx8::rowtopk)
++        _impl14 = _o14.environ.get("DS41_ROWTOPK_IMPL")
++        if _impl14 not in (None, "rtx8", "ixtk", "ixrs"):
++            raise ValueError(f"DS41_ROWTOPK_IMPL must be rtx8, ixtk or ixrs, got {_impl14!r}")
++        if _impl14 in ("ixtk", "ixrs"):
++            _t14.ops.load_library(_o14.environ["DS41_IXTK_SO"])
++        _op14 = getattr(_t14.ops, _impl14).rowtopk if _impl14 in ("ixtk", "ixrs") else _t14.ops.rtx8.rowtopk
++        # with IMPL set every line names the impl and the printing process's pid (vLLM's "(Worker_TP<r> pid=<p>)" log
++        # prefixes map pids to ranks; these prints carry no prefix), and one dispatch line per new (rows, k) per process
++        _pid14 = lambda: "" if _impl14 is None else f"impl {_impl14}, pid {_o14.getpid()}, "
++        _rows14 = set()
+         from vllm.model_executor.layers import indexer_topk as _it14
+         _SIT14 = _it14.SparseIndexerTopk
+         _fw14 = _SIT14.forward
+@@ -2006,15 +2018,18 @@
+                 lens = seq_lens.reshape(-1) if seq_lens.numel() == rows else _SIT14._row_ends(seq_lens, next_n, rows)
+                 if lens.dtype != _t14.int32:
+                     lens = lens.to(_t14.int32)
+-                _t14.ops.rtx8.rowtopk(logits, lens.contiguous(), topk_indices, topk_tokens)
++                _op14(logits, lens.contiguous(), topk_indices, topk_tokens)
+                 if _n14[0] == 0:
+-                    print(f"[ds41] rowtopk replaces persistent_topk (first call: rows {rows}, width {logits.shape[1]}, k {topk_tokens})", flush=True)
++                    print(f"[ds41] rowtopk replaces persistent_topk ({_pid14()}first call: rows {rows}, width {logits.shape[1]}, k {topk_tokens})", flush=True)
++                if _impl14 is not None and (rows, topk_tokens) not in _rows14:
++                    _rows14.add((rows, topk_tokens))
++                    print(f"[ds41] rowtopk impl {_impl14} dispatched: rows {rows}, k {topk_tokens} (call {_n14[0] + 1}, pid {_o14.getpid()})", flush=True)
+                 _n14[0] += 1
+                 return None
+             return _fw14(self, logits, seq_lens, next_n, topk_indices, topk_tokens, max_seq_len)
+ 
+         _SIT14.forward = _ds41_rowtopk_forward
+-        print("[ds41] DS41_ROWTOPK hook installed", flush=True)
++        print("[ds41] DS41_ROWTOPK hook installed" + ("" if _impl14 is None else f" (impl {_impl14}, pid {_o14.getpid()})"), flush=True)
+ except Exception as _e14:
+     print(f"[ds41] rowtopk hook not installed: {_e14!r}", flush=True)
+ 
+@@ -2289,3 +2304,89 @@
+         print("[rtx8] DS41_WKV_REPLICATE hook installed", flush=True)
+ except Exception as _e_wkv:
+     print(f"[rtx8] wkv replicate hook not installed: {_e_wkv!r}", flush=True)
++
++# ===== rtx8: V4.1 prompt region cache (DS41_REGION_CACHE=1) and prompt ids log (DS41_PROMPT_IDS_LOG=1) =====
++# With VLLM_DS41_SEGMENT_ENCODE (served), _SegmentEncoder.encode tokenizes the text between the template's control tokens in
++# one batch call (encode_batch_fast without the added vocabulary, no padding, no truncation), each region on its own, so a
++# region's IDs depend only on its text. A conversation resends its earlier regions with every request (our agent test: one region of
++# 105K-163K tokens, 98-99% of each prompt, 0.1-0.2 s to tokenize every time). DS41_REGION_CACHE=1
++# wraps each new encoder's batch call: a region seen before gets its stored IDs (a tuple, which encode copies into a new
++# list), the others go to the real batch call together, as before; encode itself is unchanged. Bounded by stored IDs
++# (DS41_REGION_CACHE_IDS, default 4,194,304, about 36 bytes each; least recently used regions go first; a region larger than
++# the bound is not stored). The renderer tokenizes in a thread pool: one lock per encoder guards its table, never a tokenizer
++# call. DS41_PROMPT_IDS_LOG=1 (cache on or off) prints each encoded prompt's ID count and sha256 (of the IDs as uint32).
++try:
++    import os as _o22
++    _rc22 = _o22.environ.get("DS41_REGION_CACHE", "0") == "1"
++    _pl22 = _o22.environ.get("DS41_PROMPT_IDS_LOG", "0") == "1"
++    if _rc22 or _pl22:
++        from vllm.tokenizers import deepseek_v41 as _tk22
++        _SE22 = _tk22._SegmentEncoder
++    if _rc22:
++        import collections as _co22, threading as _th22
++        _cap22 = int(_o22.environ.get("DS41_REGION_CACHE_IDS", str(1 << 22)))
++        _init22 = _SE22.__init__
++
++        class _RegionIds22:
++            __slots__ = ("ids",)
++
++            def __init__(self, ids):
++                self.ids = ids
++
++        def _rtx8_region_cache(batch):
++            lru, lock = _co22.OrderedDict(), _th22.Lock()
++            st = {"calls": 0, "hit": 0, "hit_ids": 0, "miss": 0, "miss_ids": 0, "ids": 0, "evicted": 0}
++
++            def encode_batch(texts, add_special_tokens=True):
++                if add_special_tokens:   # not the call encode makes: passed through, not stored
++                    return batch(texts, add_special_tokens=add_special_tokens)
++                got = {}
++                with lock:
++                    for t in texts:
++                        if t not in got and t in lru:
++                            lru.move_to_end(t)
++                            got[t] = lru[t]
++                hit = dict(got)
++                miss = [t for t in dict.fromkeys(texts) if t not in got]
++                if miss:
++                    got.update((t, tuple(e.ids)) for t, e in zip(miss, batch(miss, add_special_tokens=False)))
++                with lock:
++                    st["calls"] += 1
++                    st["hit"] += len(hit)
++                    st["hit_ids"] += sum(len(v) for v in hit.values())
++                    st["miss"] += len(miss)
++                    for t in miss:
++                        v = got[t]
++                        st["miss_ids"] += len(v)
++                        if t not in lru and len(v) <= _cap22:
++                            lru[t] = v
++                            st["ids"] += len(v)
++                    while st["ids"] > _cap22:
++                        st["ids"] -= len(lru.popitem(last=False)[1])
++                        st["evicted"] += 1
++                    line = None if st["calls"] % 128 else f"[rtx8] region cache: {st} entries {len(lru)}"
++                if line:
++                    print(line, flush=True)
++                return [_RegionIds22(got[t]) for t in texts]
++            encode_batch.rtx8_table = (lru, lock, st, batch)   # exposed for tests
++            return encode_batch
++
++        def _rtx8_segment_init(self, *a, **k):
++            _init22(self, *a, **k)
++            self._encode_batch = _rtx8_region_cache(self._encode_batch)
++        _rtx8_segment_init.rtx8_init = _init22
++        _SE22.__init__ = _rtx8_segment_init
++        print(f"[rtx8] DS41_REGION_CACHE hook installed (up to {_cap22} ids)", flush=True)
++    if _pl22:
++        import array as _ar22, hashlib as _hl22
++        _enc22 = _SE22.encode
++
++        def _rtx8_ids_log(self, parts):
++            ids = _enc22(self, parts)
++            print(f"[rtx8] prompt ids n={len(ids)} sha256={_hl22.sha256(_ar22.array('I', ids).tobytes()).hexdigest()}", flush=True)
++            return ids
++        _rtx8_ids_log.rtx8_encode = _enc22
++        _SE22.encode = _rtx8_ids_log
++        print("[rtx8] DS41_PROMPT_IDS_LOG hook installed", flush=True)
++except Exception as _e22:
++    print(f"[rtx8] region cache / prompt ids log hook not installed: {_e22!r}", flush=True)

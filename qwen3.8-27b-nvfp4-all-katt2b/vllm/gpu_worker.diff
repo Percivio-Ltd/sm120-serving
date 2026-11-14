@@ -1,0 +1,39 @@
+--- a/vllm/v1/worker/gpu_worker.py
++++ b/vllm/v1/worker/gpu_worker.py
+@@ -1,5 +1,11 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++# SPDX-FileCopyrightText: Copyright 2026 Percivio Ltd (modifications)
++#
++# Modified by Percivio Ltd in October 2026: with VLLM_SM120_FP8KV_PREFILL=1, keeps at least
++# VLLM_SM120_KATT_PROFILE_FLOOR_GIB of activation memory out of the KV-cache budget (katt2b).
++# Based on vllm/v1/worker/gpu_worker.py at vLLM commit
++# c50aca14416ef29f6ed0ed256302f30646726dcd; gpu_worker.diff holds the full change.
+ """A GPU worker class."""
+ 
+ import gc
+@@ -744,9 +750,24 @@
+         )
+         self.cudagraph_memory_estimate = cudagraph_memory_estimate
+ 
++        import os
++        katt2_profile_guard = 0
++        if os.environ.get("VLLM_SM120_FP8KV_PREFILL") == "1":
++            floor_bytes = int(float(os.environ.get("VLLM_SM120_KATT_PROFILE_FLOOR_GIB", "3.4")) * (1 << 30))
++            katt2_profile_guard = max(0, floor_bytes - self.peak_activation_memory)
++            logger.info(
++                "KATT2_PROFILE C_consumed_bytes=%d H_transient_bytes=%d G_graph_bytes=%d F_floor_bytes=%d raw_activation_bytes=%d conservative_activation_bytes=%d extra_budget_bytes=%d persistent_reserve_counted_in=model_memory_usage",
++                profile_result.total_consumed,profile_result.transient_peak_headroom,
++                cudagraph_memory_estimate_applied,floor_bytes,
++                self.peak_activation_memory, self.peak_activation_memory + katt2_profile_guard,
++                katt2_profile_guard,
++            )
++            self.peak_activation_memory += katt2_profile_guard
++
+         self.available_kv_cache_memory_bytes = (
+             self.requested_memory
+             - profile_result.non_kv_cache_memory
++            - katt2_profile_guard
+             - cudagraph_memory_estimate_applied
+         )
+ 
